@@ -1,0 +1,138 @@
+===== INFORME DE SEGUIMIENTO =====
+Total de personas detectadas: 15
+
+ID: 1
+  Tiempo total en pantalla: 4.28 segundos
+  Frames en pantalla: 108
+  Primera aparición (frame): 1
+  Última aparición (frame): 108
+  Número de detecciones: 98
+  Posiciones: [(343, 121), (343, 121), (344, 121), (343, 121), (343, 120)]... (primeras 5)
+  Timestamps: ['0.04', '0.08', '0.12', '0.16', '0.20']... (primeros 5)
+
+ID: 5
+  Tiempo total en pantalla: 5.88 segundos
+  Frames en pantalla: 148
+  Primera aparición (frame): 21
+  Última aparición (frame): 168
+  Número de detecciones: 147
+  Posiciones: [(238, 56), (237, 56), (237, 56), (238, 57), (238, 56)]... (primeras 5)
+  Timestamps: ['0.84', '0.88', '0.92', '0.96', '1.00']... (primeros 5)
+
+ID: 6
+  Tiempo total en pantalla: 0.88 segundos
+  Frames en pantalla: 23
+  Primera aparición (frame): 22
+  Última aparición (frame): 44
+  Número de detecciones: 19
+  Posiciones: [(238, 92), (239, 91), (239, 91), (240, 91), (239, 88)]... (primeras 5)
+  Timestamps: ['0.88', '0.92', '0.96', '1.00', '1.04']... (primeros 5)
+
+ID: 11
+  Tiempo total en pantalla: 1.44 segundos
+  Frames en pantalla: 37
+  Primera aparición (frame): 70
+  Última aparición (frame): 106
+  Número de detecciones: 28
+  Posiciones: [(353, 96), (353, 96), (354, 96), (357, 94), (356, 96)]... (primeras 5)
+  Timestamps: ['2.80', '2.84', '2.88', '2.92', '3.00']... (primeros 5)
+
+ID: 13
+  Tiempo total en pantalla: 1.44 segundos
+  Frames en pantalla: 37
+  Primera aparición (frame): 71
+  Última aparición (frame): 107
+  Número de detecciones: 12
+  Posiciones: [(224, 71), (224, 72), (222, 69), (222, 73), (222, 76)]... (primeras 5)
+  Timestamps: ['2.84', '2.88', '3.12', '3.76', '3.80']... (primeros 5)
+
+ID: 16
+  Tiempo total en pantalla: 0.16 segundos
+  Frames en pantalla: 5
+  Primera aparición (frame): 110
+  Última aparición (frame): 114
+  Número de detecciones: 5
+  Posiciones: [(356, 130), (356, 129), (355, 128), (355, 128), (356, 129)]... (primeras 5)
+  Timestamps: ['4.40', '4.44', '4.48', '4.52', '4.56']... (primeros 5)
+
+ID: 17
+  Tiempo total en pantalla: 0.04 segundos
+  Frames en pantalla: 2
+  Primera aparición (frame): 160
+  Última aparición (frame): 161
+  Número de detecciones: 2
+  Posiciones: [(392, 120), (392, 121)]... (primeras 5)
+  Timestamps: ['6.40', '6.44']... (primeros 5)
+
+ID: 18
+  Tiempo total en pantalla: 13.72 segundos
+  Frames en pantalla: 344
+  Primera aparición (frame): 166
+  Última aparición (frame): 509
+  Número de detecciones: 303
+  Posiciones: [(375, 115), (375, 113), (376, 111), (378, 110), (377, 109)]... (primeras 5)
+  Timestamps: ['6.64', '6.68', '6.72', '6.76', '6.80']... (primeros 5)
+
+ID: 25
+  Tiempo total en pantalla: 14.12 segundos
+  Frames en pantalla: 354
+  Primera aparición (frame): 310
+  Última aparición (frame): 663
+  Número de detecciones: 344
+  Posiciones: [(221, 76), (221, 76), (221, 83), (220, 79), (219, 96)]... (primeras 5)
+  Timestamps: ['12.40', '12.44', '12.48', '12.52', '12.56']... (primeros 5)
+
+ID: 27
+  Tiempo total en pantalla: 1.24 segundos
+  Frames en pantalla: 32
+  Primera aparición (frame): 315
+  Última aparición (frame): 346
+  Número de detecciones: 29
+  Posiciones: [(219, 76), (219, 77), (219, 78), (218, 82), (219, 81)]... (primeras 5)
+  Timestamps: ['12.60', '12.64', '12.68', '12.72', '12.76']... (primeros 5)
+
+ID: 29
+  Tiempo total en pantalla: 0.84 segundos
+  Frames en pantalla: 22
+  Primera aparición (frame): 446
+  Última aparición (frame): 467
+  Número de detecciones: 22
+  Posiciones: [(208, 90), (208, 91), (207, 90), (206, 91), (206, 91)]... (primeras 5)
+  Timestamps: ['17.84', '17.88', '17.92', '17.96', '18.00']... (primeros 5)
+
+ID: 31
+  Tiempo total en pantalla: 1.52 segundos
+  Frames en pantalla: 39
+  Primera aparición (frame): 514
+  Última aparición (frame): 552
+  Número de detecciones: 23
+  Posiciones: [(218, 129), (218, 129), (218, 129), (218, 129), (218, 128)]... (primeras 5)
+  Timestamps: ['20.56', '20.60', '20.64', '20.68', '20.72']... (primeros 5)
+
+ID: 36
+  Tiempo total en pantalla: 3.52 segundos
+  Frames en pantalla: 89
+  Primera aparición (frame): 557
+  Última aparición (frame): 645
+  Número de detecciones: 89
+  Posiciones: [(397, 100), (397, 102), (396, 103), (396, 105), (395, 106)]... (primeras 5)
+  Timestamps: ['22.28', '22.32', '22.36', '22.40', '22.44']... (primeros 5)
+
+ID: 45
+  Tiempo total en pantalla: 1.60 segundos
+  Frames en pantalla: 41
+  Primera aparición (frame): 662
+  Última aparición (frame): 702
+  Número de detecciones: 40
+  Posiciones: [(206, 98), (204, 98), (201, 99), (198, 99), (193, 99)]... (primeras 5)
+  Timestamps: ['26.48', '26.52', '26.56', '26.60', '26.64']... (primeros 5)
+
+ID: 50
+  Tiempo total en pantalla: 0.76 segundos
+  Frames en pantalla: 20
+  Primera aparición (frame): 695
+  Última aparición (frame): 714
+  Número de detecciones: 20
+  Posiciones: [(145, 123), (144, 121), (144, 122), (144, 119), (144, 120)]... (primeras 5)
+  Timestamps: ['27.80', '27.84', '27.88', '27.92', '27.96']... (primeros 5)
+
