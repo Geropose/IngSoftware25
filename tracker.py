@@ -1,4 +1,18 @@
 from ultralytics import YOLO
+
+from collections import defaultdict
+
+def buscar_id_existente(center_x, center_y, current_time, prev_centers, distancia_umbral=30, tiempo_umbral=0.5):
+    """
+    Reasigna el ID si la nueva posición es muy cercana a una anterior reciente.
+    """
+    for pid, historial in prev_centers.items():
+        for px, py, t in reversed(historial[-5:]):
+            distancia = ((center_x - px)**2 + (center_y - py)**2)**0.5
+            if distancia < distancia_umbral and abs(current_time - t) < tiempo_umbral:
+                return pid
+    return None
+
 import cv2
 import time
 import datetime
@@ -75,24 +89,31 @@ while True:
         boxes = results[0].boxes.xyxy.cpu().numpy()
         ids = results[0].boxes.id.int().cpu().numpy()
         
+        # Diccionario para historial de centros (se mantiene entre frames)
+        if 'prev_centers' not in globals():
+            prev_centers = defaultdict(list)
+
         for i, box in enumerate(boxes):
-            person_id = int(ids[i])
+            yolo_id = int(ids[i])
             x1, y1, x2, y2 = box
-            
-            # Calcular el centro de la persona
             center_x = int((x1 + x2) / 2)
             center_y = int((y1 + y2) / 2)
-            
-            # Almacenar posición
-            positions[person_id].append((center_x, center_y))
-            
-            # Almacenar timestamp
-            timestamps[person_id].append(current_time)
-            
-            # Actualizar primer y último frame visto
-            if person_id not in first_seen:
-                first_seen[person_id] = frame_count
-            last_seen[person_id] = frame_count
+
+            # Verificar si este ID podría ser una persona anterior
+            id_real = buscar_id_existente(center_x, center_y, current_time, prev_centers)
+            if id_real is None:
+                id_real = yolo_id  # Usar el ID detectado por YOLO
+
+            # Guardar datos
+            positions[id_real].append((center_x, center_y))
+            timestamps[id_real].append(current_time)
+
+            if id_real not in first_seen:
+                first_seen[id_real] = frame_count
+            last_seen[id_real] = frame_count
+
+            # Agregar al historial reciente
+            prev_centers[id_real].append((center_x, center_y, current_time))
     
     # Visualización de resultados
     frame_ = results[0].plot()
@@ -132,8 +153,8 @@ with open('resumen_tracking.txt', 'w') as f:
         f.write(f"  Primera aparición (frame): {first_seen[person_id]}\n")
         f.write(f"  Última aparición (frame): {last_seen[person_id]}\n")
         f.write(f"  Número de detecciones: {len(positions[person_id])}\n")
-        f.write(f"  Posiciones: {positions[person_id][:5]}... (primeras 5)\n")
-        f.write(f"  Timestamps: {[f'{t:.2f}' for t in timestamps[person_id][:5]]}... (primeros 5)\n")
+        f.write(f"  Posiciones: {positions[person_id]}... (primeras 5)\n")
+        f.write(f"  Timestamps: {[f'{t:.2f}' for t in timestamps[person_id]]}... (primeros 5)\n")
         f.write("\n")
         
         # Imprimir resumen en consola
@@ -156,3 +177,5 @@ with open('datos_tracking_completos.json', 'w') as f:
         'first_seen': {str(k): v for k, v in first_seen.items()},
         'last_seen': {str(k): v for k, v in last_seen.items()},
     }, f)
+
+    
