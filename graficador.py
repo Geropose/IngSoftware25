@@ -24,7 +24,7 @@ def extraer_todas_las_posiciones(ruta_informe):
 
 # Ruta de tus archivos
 informe_path = 'resumen_tracking.txt'
-imagen_path = 'PLANO640X360.png'
+imagen_path = 'fondo_aero.png'
 
 # Extraer posiciones
 posiciones = extraer_todas_las_posiciones(informe_path)

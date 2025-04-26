@@ -22,13 +22,13 @@ from collections import defaultdict
 model = YOLO('yolov8n.pt')
 
 # Carga el video
-video_path = './supermercado.mp4'
+video_path = './pruebaAeropuerto.mp4'
 cap = cv2.VideoCapture(video_path)
 
 
 # Ruta del video original y de salida
-input_path = 'video_original.mp4'
-output_path = 'video_reducido.mp4'
+input_path = 'pruebaAeropuerto.mp4'
+output_path = 'pruebaAeropuerto_reducido.mp4'
 
 # Leer propiedades del video
 fps = cap.get(cv2.CAP_PROP_FPS)
