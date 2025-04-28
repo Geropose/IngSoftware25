@@ -6,3 +6,5 @@
 
 - heatmap_por_id_streamlit.py crea el mapa de calor POR ID en la interfaz
 
+- heatmap_por_id_streamlit.py se ejecuta con el siguiente comando
+streamlit run "c:/Users/rivad/Desktop/Facultad/5TO/IS/PROYECTO/IngSoftware25/heatmap_por_id_streamlit.py"

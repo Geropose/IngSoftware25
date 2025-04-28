@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 
 from collections import defaultdict
-
+saved_images_count = {}  # Llevará registro de cuántas imágenes hemos guardado por ID
 def buscar_id_existente(center_x, center_y, current_time, prev_centers, distancia_umbral=30, tiempo_umbral=0.5):
     """
     Reasigna el ID si la nueva posición es muy cercana a una anterior reciente.
@@ -72,6 +72,13 @@ first_seen = {}  # Primer frame en que se ve cada ID
 last_seen = {}   # Último frame en que se ve cada ID
 frame_count = 0
 
+import os
+
+# Crear carpeta para guardar las imágenes de cada persona detectada
+output_dir = "personas_detectadas"
+os.makedirs(output_dir, exist_ok=True)
+
+
 # lee frames
 while True:
     ret, frame = cap.read()
@@ -100,16 +107,41 @@ while True:
             center_y = int((y1 + y2) / 2)
 
             # Verificar si este ID podría ser una persona anterior
-            id_real = buscar_id_existente(center_x, center_y, current_time, prev_centers)
-            if id_real is None:
-                id_real = yolo_id  # Usar el ID detectado por YOLO
+            #id_real = buscar_id_existente(center_x, center_y, current_time, prev_centers)
+            #if id_real is None:
+            id_real = yolo_id  # Usar el ID detectado por YOLO
 
             # Guardar datos
             positions[id_real].append((center_x, center_y))
             timestamps[id_real].append(current_time)
 
+            # Configuración (puedes poner estos valores al inicio del script)
+            MAX_IMAGES_PER_ID = 3  # Máximo de imágenes a guardar por persona
+            SAVE_INTERVAL = 30     # Guardar una imagen cada X frames
+
+            # Dentro de tu función:
             if id_real not in first_seen:
                 first_seen[id_real] = frame_count
+
+            # Guardar imagen si es el frame inicial o cada SAVE_INTERVAL frames
+            if (id_real not in saved_images_count or 
+                saved_images_count[id_real] < MAX_IMAGES_PER_ID) and \
+            (frame_count - first_seen.get(id_real, 0)) % SAVE_INTERVAL == 0:
+
+                x1_crop = max(0, int(x1))
+                y1_crop = max(0, int(y1))
+                x2_crop = min(frame.shape[1], int(x2))
+                y2_crop = min(frame.shape[0], int(y2))
+                cropped_person = frame[y1_crop:y2_crop, x1_crop:x2_crop]
+
+                if cropped_person.size > 0:
+                    if id_real not in saved_images_count:
+                        saved_images_count[id_real] = 0
+                    
+                    save_path = os.path.join(output_dir, f"ID_{id_real}_{saved_images_count[id_real]}.jpg")
+                    cv2.imwrite(save_path, cropped_person)
+                    saved_images_count[id_real] += 1
+
             last_seen[id_real] = frame_count
 
             # Agregar al historial reciente
