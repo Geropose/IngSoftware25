@@ -1,213 +1,188 @@
-from ultralytics import YOLO
-
-from collections import defaultdict
-saved_images_count = {}  # Llevará registro de cuántas imágenes hemos guardado por ID
-def buscar_id_existente(center_x, center_y, current_time, prev_centers, distancia_umbral=30, tiempo_umbral=0.5):
-    """
-    Reasigna el ID si la nueva posición es muy cercana a una anterior reciente.
-    """
-    for pid, historial in prev_centers.items():
-        for px, py, t in reversed(historial[-5:]):
-            distancia = ((center_x - px)**2 + (center_y - py)**2)**0.5
-            if distancia < distancia_umbral and abs(current_time - t) < tiempo_umbral:
-                return pid
-    return None
-
 import cv2
-import time
-import datetime
-from collections import defaultdict
-
-# Se utiliza el modelo pre-entrenado YOLOv8n
-model = YOLO('yolov8n.pt')
-
-# Carga el video
-video_path = './pruebaAeropuerto.mp4'
-cap = cv2.VideoCapture(video_path)
-
-
-# Ruta del video original y de salida
-input_path = 'pruebaAeropuerto.mp4'
-output_path = 'pruebaAeropuerto_reducido.mp4'
-
-# Leer propiedades del video
-fps = cap.get(cv2.CAP_PROP_FPS)
-width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-# Nueva resolución (ajustá según lo que necesites)
-new_width = 640
-new_height = 360
-
-# Definir codec y VideoWriter
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
-
-# Redimensionar y guardar frame por frame
-while cap.isOpened():
-    ret, frame = cap.read()
-    if not ret:
-        break
-    resized_frame = cv2.resize(frame, (new_width, new_height))
-    out.write(resized_frame)
-
-# Liberar recursos
-cap.release()
-out.release()
-cap = cv2.VideoCapture(output_path)
-print("✅ Video reducido guardado como:", output_path)
-
-if not cap.isOpened():
-    print("Error: No se pudo abrir el video.")
-    exit()
-
-# Obtener FPS del video para cálculos de tiempo
-fps = cap.get(cv2.CAP_PROP_FPS)
-print(f"FPS del video: {fps}")
-
-# Estructuras para almacenar datos por ID
-positions = defaultdict(list)  # Posiciones por ID
-timestamps = defaultdict(list)  # Timestamps por ID
-first_seen = {}  # Primer frame en que se ve cada ID
-last_seen = {}   # Último frame en que se ve cada ID
-frame_count = 0
-
 import os
+import numpy as np
+from ultralytics import YOLO
+from collections import defaultdict
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.ndimage import gaussian_filter
 
-# Crear carpeta para guardar las imágenes de cada persona detectada
-output_dir = "personas_detectadas"
-os.makedirs(output_dir, exist_ok=True)
+# Carga el modelo YOLO
+model = YOLO("yolov8n.pt")  # Usa el modelo ligero por velocidad
 
+def procesar_video(video_path, output_path="output.mp4"):
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise IOError("No se pudo abrir el video")
 
-# lee frames
-while True:
-    ret, frame = cap.read()
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    if not ret:
-        break  # Sale del loop si no se puede leer el frame
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    # Almacenar dimensiones del video para los mapas de calor
+    video_dims = (width, height)
     
-    frame_count += 1
-    current_time = frame_count / fps  # Tiempo en segundos basado en FPS
-    
-    # Detección y seguimiento de personas (clase 0)
-    results = model.track(frame, persist=True, classes=[0])
-    
-    if results[0].boxes.id is not None:
-        boxes = results[0].boxes.xyxy.cpu().numpy()
-        ids = results[0].boxes.id.int().cpu().numpy()
+    # Diccionario para almacenar posiciones con pesos
+    posiciones = defaultdict(list)
+    frame_count = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Ejecutar detección y tracking
+        results = model.track(frame, persist=True, tracker="bytetrack.yaml", classes=0)  # Solo personas (clase 0)
         
-        # Diccionario para historial de centros (se mantiene entre frames)
-        if 'prev_centers' not in globals():
-            prev_centers = defaultdict(list)
+        if results[0].boxes.id is not None:
+            ids = results[0].boxes.id.cpu().numpy().astype(int)
+            boxes = results[0].boxes.xyxy.cpu().numpy()
+            confs = results[0].boxes.conf.cpu().numpy()  # Obtener confianzas
 
-        for i, box in enumerate(boxes):
-            yolo_id = int(ids[i])
-            x1, y1, x2, y2 = box
-            center_x = int((x1 + x2) / 2)
-            center_y = int((y1 + y2) / 2)
+            for id, box, conf in zip(ids, boxes, confs):
+                x1, y1, x2, y2 = map(int, box)
+                cx = int((x1 + x2) / 2)
+                cy = int((y1 + y2) / 2)
+                
+                # Almacenar posición con peso (confianza) y frame
+                posiciones[id].append((cx, cy, conf, frame_count))
 
-            # Verificar si este ID podría ser una persona anterior
-            #id_real = buscar_id_existente(center_x, center_y, current_time, prev_centers)
-            #if id_real is None:
-            id_real = yolo_id  # Usar el ID detectado por YOLO
+                # Dibujar en el frame
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(frame, f"ID: {id} ({conf:.2f})", (x1, y1 - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-            # Guardar datos
-            positions[id_real].append((center_x, center_y))
-            timestamps[id_real].append(current_time)
-
-            # Configuración (puedes poner estos valores al inicio del script)
-            MAX_IMAGES_PER_ID = 3  # Máximo de imágenes a guardar por persona
-            SAVE_INTERVAL = 30     # Guardar una imagen cada X frames
-
-            # Dentro de tu función:
-            if id_real not in first_seen:
-                first_seen[id_real] = frame_count
-
-            # Guardar imagen si es el frame inicial o cada SAVE_INTERVAL frames
-            if (id_real not in saved_images_count or 
-                saved_images_count[id_real] < MAX_IMAGES_PER_ID) and \
-            (frame_count - first_seen.get(id_real, 0)) % SAVE_INTERVAL == 0:
-
-                x1_crop = max(0, int(x1))
-                y1_crop = max(0, int(y1))
-                x2_crop = min(frame.shape[1], int(x2))
-                y2_crop = min(frame.shape[0], int(y2))
-                cropped_person = frame[y1_crop:y2_crop, x1_crop:x2_crop]
-
-                if cropped_person.size > 0:
-                    if id_real not in saved_images_count:
-                        saved_images_count[id_real] = 0
-                    
-                    save_path = os.path.join(output_dir, f"ID_{id_real}_{saved_images_count[id_real]}.jpg")
-                    cv2.imwrite(save_path, cropped_person)
-                    saved_images_count[id_real] += 1
-
-            last_seen[id_real] = frame_count
-
-            # Agregar al historial reciente
-            prev_centers[id_real].append((center_x, center_y, current_time))
-    
-    # Visualización de resultados
-    frame_ = results[0].plot()
-    cv2.imshow('Tracking personas', frame_)
-
-    # Salir si se presiona 'q'
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-# Libera recursos
-cap.release()
-cv2.destroyAllWindows()
-
-# Generar informe
-print("\n===== INFORME DE SEGUIMIENTO =====")
-print(f"Total de personas detectadas: {len(positions)}")
-
-# Crear archivo de resumen
-with open('resumen_tracking.txt', 'w') as f:
-    f.write("===== INFORME DE SEGUIMIENTO =====\n")
-    f.write(f"Total de personas detectadas: {len(positions)}\n\n")
-    
-    for person_id in sorted(positions.keys()):
-        # Calcular tiempo total en pantalla (último timestamp - primero)
-        if len(timestamps[person_id]) > 1:
-            tiempo_total = timestamps[person_id][-1] - timestamps[person_id][0]
-        else:
-            tiempo_total = 1 / fps  # Duración de un frame
+        # Mostrar progreso
+        if frame_count % 30 == 0:
+            print(f"Procesando frame {frame_count}/{total_frames} ({frame_count/total_frames*100:.1f}%)")
             
-        # Calcular frames en pantalla
-        frames_en_pantalla = last_seen[person_id] - first_seen[person_id] + 1
-        
-        # Escribir resumen para esta persona
-        f.write(f"ID: {person_id}\n")
-        f.write(f"  Tiempo total en pantalla: {tiempo_total:.2f} segundos\n")
-        f.write(f"  Frames en pantalla: {frames_en_pantalla}\n")
-        f.write(f"  Primera aparición (frame): {first_seen[person_id]}\n")
-        f.write(f"  Última aparición (frame): {last_seen[person_id]}\n")
-        f.write(f"  Número de detecciones: {len(positions[person_id])}\n")
-        f.write(f"  Posiciones: {positions[person_id]}... (primeras 5)\n")
-        f.write(f"  Timestamps: {[f'{t:.2f}' for t in timestamps[person_id]]}... (primeros 5)\n")
-        f.write("\n")
-        
-        # Imprimir resumen en consola
-        print(f"ID: {person_id}")
-        print(f"  Tiempo total en pantalla: {tiempo_total:.2f} segundos")
-        print(f"  Frames en pantalla: {frames_en_pantalla}")
-        print(f"  Primera aparición (frame): {first_seen[person_id]}")
-        print(f"  Última aparición (frame): {last_seen[person_id]}")
-        print(f"  Número de detecciones: {len(positions[person_id])}")
-        print()
+        out.write(frame)
+        frame_count += 1
 
-print(f"Informe completo guardado en 'resumen_tracking.txt'")
+    cap.release()
+    out.release()
+    return output_path, posiciones, video_dims
 
-# Opcionalmente, guardar datos completos para análisis posterior
-import json
-with open('datos_tracking_completos.json', 'w') as f:
-    json.dump({
-        'positions': {str(k): v for k, v in positions.items()},
-        'timestamps': {str(k): v for k, v in timestamps.items()},
-        'first_seen': {str(k): v for k, v in first_seen.items()},
-        'last_seen': {str(k): v for k, v in last_seen.items()},
-    }, f)
-
+def generar_mapa_calor_general(posiciones, video_dims, sigma=15):
+    """
+    Genera un mapa de calor general con suavizado gaussiano
+    """
+    width, height = video_dims
     
+    # Crear una matriz vacía para el mapa de calor
+    heatmap = np.zeros((height, width))
+    
+    # Agregar todas las posiciones al mapa de calor con sus pesos (confianza)
+    for id in posiciones:
+        for cx, cy, conf, _ in posiciones[id]:
+            if 0 <= cx < width and 0 <= cy < height:
+                heatmap[cy, cx] += conf  # Usar confianza como peso
+    
+    # Aplicar suavizado gaussiano
+    heatmap = gaussian_filter(heatmap, sigma=sigma)
+    
+    # Normalizar para visualización
+    if np.max(heatmap) > 0:
+        heatmap = heatmap / np.max(heatmap)
+    
+    # Crear figura
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Usar un mapa de colores más efectivo
+    ax.imshow(heatmap, cmap='inferno', interpolation='nearest')
+    ax.axis('off')
+    
+    return fig
+
+def generar_mapa_calor_por_id(posiciones, id, video_dims, sigma=10):
+    """
+    Genera un mapa de calor para un ID específico con trayectoria
+    """
+    if id not in posiciones or not posiciones[id]:
+        return None
+        
+    width, height = video_dims
+    
+    # Crear una matriz vacía para el mapa de calor
+    heatmap = np.zeros((height, width))
+    
+    # Extraer coordenadas y ordenarlas por número de frame
+    trayectoria = sorted(posiciones[id], key=lambda x: x[3])
+    
+    # Agregar puntos al mapa de calor con pesos basados en confianza
+    for cx, cy, conf, _ in trayectoria:
+        if 0 <= cx < width and 0 <= cy < height:
+            heatmap[cy, cx] += conf
+    
+    # Aplicar suavizado gaussiano
+    heatmap = gaussian_filter(heatmap, sigma=sigma)
+    
+    # Normalizar para visualización
+    if np.max(heatmap) > 0:
+        heatmap = heatmap / np.max(heatmap)
+    
+    # Crear figura
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Mostrar mapa de calor
+    ax.imshow(heatmap, cmap='viridis', interpolation='nearest')
+    
+    # Dibujar trayectoria con líneas
+    coords = np.array([(x[0], x[1]) for x in trayectoria])
+    if len(coords) > 1:
+        ax.plot(coords[:, 0], coords[:, 1], 'r-', linewidth=2, alpha=0.7)
+        
+        # Marcar inicio y fin
+        ax.plot(coords[0, 0], coords[0, 1], 'go', markersize=8)  # Inicio en verde
+        ax.plot(coords[-1, 0], coords[-1, 1], 'ro', markersize=8)  # Fin en rojo
+    
+    ax.axis('off')
+    
+    return fig
+
+def generar_mapa_trayectorias(posiciones, video_dims, min_frames=10):
+    """
+    Genera un mapa con todas las trayectorias de las personas
+    """
+    width, height = video_dims
+    
+    # Crear figura
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Configurar límites
+    ax.set_xlim(0, width)
+    ax.set_ylim(height, 0)  # Invertir eje Y para coincidir con coordenadas de imagen
+    
+    # Colores para diferentes IDs
+    colores = plt.cm.jet(np.linspace(0, 1, len(posiciones)))
+    
+    # Dibujar trayectorias
+    for i, id in enumerate(posiciones):
+        # Filtrar IDs con pocos frames
+        if len(posiciones[id]) < min_frames:
+            continue
+            
+        # Ordenar por número de frame
+        trayectoria = sorted(posiciones[id], key=lambda x: x[3])
+        coords = np.array([(x[0], x[1]) for x in trayectoria])
+        
+        if len(coords) > 1:
+            # Dibujar línea de trayectoria
+            ax.plot(coords[:, 0], coords[:, 1], '-', color=colores[i % len(colores)], 
+                   linewidth=2, alpha=0.7, label=f"ID: {id}")
+            
+            # Marcar inicio y fin
+            ax.plot(coords[0, 0], coords[0, 1], 'o', color=colores[i % len(colores)], markersize=8)
+            ax.plot(coords[-1, 0], coords[-1, 1], 's', color=colores[i % len(colores)], markersize=8)
+    
+    # Agregar leyenda si no hay demasiados IDs
+    if len(posiciones) <= 15:
+        ax.legend(loc='upper right', bbox_to_anchor=(1.1, 1))
+    
+    ax.axis('off')
+    
+    return fig

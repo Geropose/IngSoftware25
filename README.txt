@@ -1,10 +1,6 @@
-- USAR resumen_tracking_ficticio_distribuido, posee los datos reales pero nose pq caudno cargo "resumen_tracking" no me identifica los ID. Ejecuten "tracker" y copien y peguen la data de resumen_tracking a resumen_tracking_ficticio_distribuido.
+- Tracker simplemente reconoce los id y los pone en un video. Genera los mapas de calor general, por id y las trayectorias. Ademas de comprimir el video a una resolucion fija
 
-- tracker crea el txt de "resumen_tracking" analizando el video
+- app3 es toda la interfaz grafica mediante streamlit donde se van colocando el video y las imagenes correspondientes.
 
-- graficador crea el mapa de calor de TODOS LOS IDS encontramos a partir de resumen_tracking
-
-- heatmap_por_id_streamlit.py crea el mapa de calor POR ID en la interfaz
-
-- heatmap_por_id_streamlit.py se ejecuta con el siguiente comando
-streamlit run "c:/Users/rivad/Desktop/Facultad/5TO/IS/PROYECTO/IngSoftware25/heatmap_por_id_streamlit.py"
+- la ejecucion por streamlit es con el siguiente comando en consola
+streamlit run <archivo app3.py >
