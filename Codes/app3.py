@@ -19,7 +19,7 @@ import cv2
 import subprocess
 from pathlib import Path
 
-# Función auxiliar para seleccionar las funciones correctas según el algoritmo
+# Función auxiliar para seleccionar las funciones correctas según el algoritmof
 def get_tracker_functions(algoritmo='ByteTrack'):
     """
     Devuelve las funciones correspondientes al algoritmo seleccionado
@@ -245,6 +245,14 @@ with st.sidebar:
         ["ByteTrack", "DeepSORT"],
         help="ByteTrack es más rápido, DeepSORT puede ser más preciso en algunos casos"
     )
+    
+    # Detectar cambio de algoritmo y reiniciar
+    if 'last_algoritmo_tracking' not in st.session_state:
+        st.session_state.last_algoritmo_tracking = algoritmo_tracking
+    elif algoritmo_tracking != st.session_state.last_algoritmo_tracking:
+        st.session_state.last_algoritmo_tracking = algoritmo_tracking
+        reset_processing_state()
+        st.rerun()
 
     # Guardar la selección en el estado de la sesión para mantenerla entre recargas
     st.session_state.algoritmo_tracking = algoritmo_tracking
