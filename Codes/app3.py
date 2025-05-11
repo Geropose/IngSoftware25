@@ -19,7 +19,7 @@ import cv2
 import subprocess
 from pathlib import Path
 
-# Función auxiliar para seleccionar las funciones correctas según el algoritmof
+# Función auxiliar para seleccionar las funciones correctas según el algoritmo
 def get_tracker_functions(algoritmo='ByteTrack'):
     """
     Devuelve las funciones correspondientes al algoritmo seleccionado
@@ -245,8 +245,7 @@ with st.sidebar:
         ["ByteTrack", "DeepSORT"],
         help="ByteTrack es más rápido, DeepSORT puede ser más preciso en algunos casos"
     )
-    
-    # Detectar cambio de algoritmo y reiniciar
+
     if 'last_algoritmo_tracking' not in st.session_state:
         st.session_state.last_algoritmo_tracking = algoritmo_tracking
     elif algoritmo_tracking != st.session_state.last_algoritmo_tracking:
@@ -274,6 +273,32 @@ with st.sidebar:
     2. Generar mapas de calor de movimiento
     3. Visualizar trayectorias individuales
     """)
+
+    st.subheader("Resolución del video")
+    resoluciones_disponibles = {
+        "Original": None,
+        "1920x1080": (1920, 1080),
+        "1280x720": (1280, 720),
+        "854x480": (854, 480),
+        "640x360": (640, 360)
+    }
+
+    resolucion_seleccionada = st.selectbox(
+        "Elegí la resolución de salida:",
+        options=list(resoluciones_disponibles.keys()),
+    )
+
+    # Detectar cambio de resolución
+    if 'last_resolucion' not in st.session_state:
+        st.session_state.last_resolucion = resolucion_seleccionada
+    elif resolucion_seleccionada != st.session_state.last_resolucion:
+        st.session_state.last_resolucion = resolucion_seleccionada
+        reset_processing_state()  # Opcional, si querés limpiar procesamiento anterior
+        st.rerun()
+
+    # Guardar resolución seleccionada actual
+    st.session_state.resolucion_seleccionada = resoluciones_disponibles[resolucion_seleccionada]
+
 
 # Subir video
 video_file = st.file_uploader("Subí un video", type=["mp4", "avi", "mov", "mkv", "webm"], 
@@ -357,8 +382,8 @@ if video_file:
                         algoritmo_seleccionado = st.session_state.get('algoritmo_tracking', 'ByteTrack')
                         procesar_video, _, _, _ = get_tracker_functions(algoritmo_seleccionado)
     
-                         # Procesar video con el algoritmo seleccionado
-                        output_path, posiciones, video_dims = procesar_video(st.session_state.temp_video_path)
+                         # Procesar video con el algoritmo seleccionado -- Se agrega el siguiente parametro en la funcion procesar_video nueva_resolucion=st.session_state.resolucion_seleccionada -- Dia del cambio 2025-05-10
+                        output_path, posiciones, video_dims = procesar_video(st.session_state.temp_video_path, nueva_resolucion=st.session_state.resolucion_seleccionada)
                         st.session_state.algoritmo_usado = algoritmo_seleccionado  # Guardar el algoritmo usado
 
                         # Convertir el video de salida para asegurar compatibilidad

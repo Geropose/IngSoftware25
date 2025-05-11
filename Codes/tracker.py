@@ -10,22 +10,29 @@ from scipy.ndimage import gaussian_filter
 # Carga el modelo YOLO
 model = YOLO("yolov8n.pt")  # Usa el modelo ligero por velocidad
 
-def procesar_video(video_path, output_path="output.mp4"):
+def procesar_video(video_path, output_path="output.mp4", nueva_resolucion=None):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise IOError("No se pudo abrir el video")
 
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    # Resolución original del video
+    width_original = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height_original = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # Resolución personalizada si se especificó
+    if nueva_resolucion:
+        width, height = nueva_resolucion
+    else:
+        width, height = width_original, height_original
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    # Almacenar dimensiones del video para los mapas de calor
+    # Almacenar dimensiones del video para mapas de calor
     video_dims = (width, height)
-    
+
     # Diccionario para almacenar posiciones con pesos
     posiciones = defaultdict(list)
     frame_count = 0
@@ -35,9 +42,16 @@ def procesar_video(video_path, output_path="output.mp4"):
         if not ret:
             break
 
+        # Redimensionar el frame si es necesario
+        if nueva_resolucion:
+            frame = cv2.resize(frame, (width, height))
+
+        cv2.putText(frame, f'Resolucion: {width}x{height}', (20, 40), 
+            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
+
         # Ejecutar detección y tracking
-        results = model.track(frame, persist=True, tracker="bytetrack.yaml", classes=0)  # Solo personas (clase 0)
-        
+        results = model.track(frame, persist=True, tracker="bytetrack.yaml", classes=0)  # Solo personas
+
         if results[0].boxes.id is not None:
             ids = results[0].boxes.id.cpu().numpy().astype(int)
             boxes = results[0].boxes.xyxy.cpu().numpy()
@@ -47,25 +61,27 @@ def procesar_video(video_path, output_path="output.mp4"):
                 x1, y1, x2, y2 = map(int, box)
                 cx = int((x1 + x2) / 2)
                 cy = int((y1 + y2) / 2)
-                
+
                 # Almacenar posición con peso (confianza) y frame
                 posiciones[id].append((cx, cy, conf, frame_count))
 
                 # Dibujar en el frame
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, f"ID: {id} ({conf:.2f})", (x1, y1 - 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                cv2.putText(frame, f"ID: {id} ({conf:.2f})", (x1, y1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
         # Mostrar progreso
         if frame_count % 30 == 0:
             print(f"Procesando frame {frame_count}/{total_frames} ({frame_count/total_frames*100:.1f}%)")
-            
+
         out.write(frame)
         frame_count += 1
 
     cap.release()
     out.release()
     return output_path, posiciones, video_dims
+
+
 
 def generar_mapa_calor_general(posiciones, video_dims, sigma=15):
     """
