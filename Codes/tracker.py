@@ -10,78 +10,78 @@ from scipy.ndimage import gaussian_filter
 # Carga el modelo YOLO
 model = YOLO("yolov8n.pt")  # Usa el modelo ligero por velocidad
 
-def procesar_video(video_path, output_path="output.mp4", nueva_resolucion=None):
+def procesar_video(video_path, output_path="output.mp4"):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise IOError("No se pudo abrir el video")
 
-    # Resolución original del video
-    width_original = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height_original = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    # Resolución personalizada si se especificó
-    if nueva_resolucion:
-        width, height = nueva_resolucion
-    else:
-        width, height = width_original, height_original
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    # Almacenar dimensiones del video para mapas de calor
+    # Almacenar dimensiones del video para los mapas de calor
     video_dims = (width, height)
-
+    
     # Diccionario para almacenar posiciones con pesos
     posiciones = defaultdict(list)
     frame_count = 0
+
+    # Determinar el algoritmo de tracking a usar
+    tracker_algo = "bytetrack.yaml"
+    try:
+        # Intentar acceder a session_state de manera segura
+        import streamlit as st
+        if 'algoritmo_tracking' in st.session_state and st.session_state.algoritmo_tracking == "BotSort":
+            tracker_algo = "botsort.yaml"
+    except:
+        # Si hay algún error (por ejemplo, no estamos en un entorno Streamlit),
+        # simplemente usamos el valor predeterminado
+        pass
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Redimensionar el frame si es necesario
-        if nueva_resolucion:
-            frame = cv2.resize(frame, (width, height))
-
-        cv2.putText(frame, f'Resolucion: {width}x{height}', (20, 40), 
-            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
-
         # Ejecutar detección y tracking
-        results = model.track(frame, persist=True, tracker="bytetrack.yaml", classes=0)  # Solo personas
+        try:
+            results = model.track(frame, persist=True, tracker=tracker_algo, classes=0)  # Solo personas (clase 0)
+            print("trackeado: " + tracker_algo)
+            if results[0].boxes.id is not None:
+                ids = results[0].boxes.id.cpu().numpy().astype(int)
+                boxes = results[0].boxes.xyxy.cpu().numpy()
+                confs = results[0].boxes.conf.cpu().numpy()  # Obtener confianzas
 
-        if results[0].boxes.id is not None:
-            ids = results[0].boxes.id.cpu().numpy().astype(int)
-            boxes = results[0].boxes.xyxy.cpu().numpy()
-            confs = results[0].boxes.conf.cpu().numpy()  # Obtener confianzas
+                for id, box, conf in zip(ids, boxes, confs):
+                    x1, y1, x2, y2 = map(int, box)
+                    cx = int((x1 + x2) / 2)
+                    cy = int((y1 + y2) / 2)
+                    
+                    # Almacenar posición con peso (confianza) y frame
+                    posiciones[id].append((cx, cy, conf, frame_count))
 
-            for id, box, conf in zip(ids, boxes, confs):
-                x1, y1, x2, y2 = map(int, box)
-                cx = int((x1 + x2) / 2)
-                cy = int((y1 + y2) / 2)
-
-                # Almacenar posición con peso (confianza) y frame
-                posiciones[id].append((cx, cy, conf, frame_count))
-
-                # Dibujar en el frame
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, f"ID: {id} ({conf:.2f})", (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    # Dibujar en el frame
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.putText(frame, f"ID: {id} ({conf:.2f})", (x1, y1 - 10), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        except Exception as e:
+            print(f"Error en el frame {frame_count}: {str(e)}")
+            # Continuar con el siguiente frame en caso de error
 
         # Mostrar progreso
         if frame_count % 30 == 0:
             print(f"Procesando frame {frame_count}/{total_frames} ({frame_count/total_frames*100:.1f}%)")
-
+            
         out.write(frame)
         frame_count += 1
 
     cap.release()
     out.release()
     return output_path, posiciones, video_dims
-
-
 
 def generar_mapa_calor_general(posiciones, video_dims, sigma=15):
     """
