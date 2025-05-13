@@ -15,15 +15,22 @@ tracker = DeepSort(max_age=30, n_init=3, nms_max_overlap=1.0, max_cosine_distanc
 # Carga el modelo YOLO
 model = YOLO("yolov8n.pt") 
 
-def procesar_video_deepsort(video_path, output_path="output.mp4",mostrar_video=False):
+def procesar_video_deepsort(video_path, output_path="output.mp4", nueva_resolucion=None, mostrar_video=False):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise IOError("No se pudo abrir el video")
 
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width_original = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height_original = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # Resolución personalizada si se especificó
+    if nueva_resolucion:
+        width, height = nueva_resolucion
+    else:
+        width, height = width_original, height_original
+
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
@@ -44,6 +51,13 @@ def procesar_video_deepsort(video_path, output_path="output.mp4",mostrar_video=F
         ret, frame = cap.read()
         if not ret:
             break
+
+        # Redimensionar el frame si es necesario
+        if nueva_resolucion:
+            frame = cv2.resize(frame, (width, height))
+
+        cv2.putText(frame, f'Resolucion: {width}x{height}', (20, 40), 
+            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
 
         results = model(frame, classes=0)
         detections = []
