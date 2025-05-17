@@ -10,7 +10,7 @@ from scipy.ndimage import gaussian_filter
 # Carga el modelo YOLO
 model = YOLO("yolov8n.pt")  # Usa el modelo ligero por velocidad
 
-def procesar_video(video_path, output_path="output.mp4", nueva_resolucion=None):
+def procesar_video(video_path, output_path="output.mp4", nueva_resolucion=None,algoritmo="bytetrack"):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise IOError("No se pudo abrir el video")
@@ -42,15 +42,28 @@ def procesar_video(video_path, output_path="output.mp4", nueva_resolucion=None):
         if not ret:
             break
 
+        if frame is None or frame.shape[0] == 0 or frame.shape[1] == 0:
+            print(f"Frame inválido en {frame_count}, se omite.")
+            continue
+
+        if frame.shape[:2] != (height, width):
+            print(f"Resolución inconsistente en frame {frame_count}: {frame.shape[:2]}. Redimensionando.")
+            frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
         # Redimensionar el frame si es necesario
-        if nueva_resolucion:
-            frame = cv2.resize(frame, (width, height))
+        #if nueva_resolucion:
+         #   frame = cv2.resize(frame, (width, height))
 
         cv2.putText(frame, f'Resolucion: {width}x{height}', (20, 40), 
             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
 
         # Ejecutar detección y tracking
-        results = model.track(frame, persist=True, tracker="bytetrack.yaml", classes=0)  # Solo personas
+        if algoritmo == "bytetrack":
+            # Usar ByteTrack para detección y seguimiento
+            results = model.track(frame, persist=True, tracker="bytetrack.yaml", classes=0)# Solo personas
+        else: 
+            # Usar el algoritmo de seguimiento por defecto
+            print("Usando algoritmo de seguimiento : ", algoritmo)
+            results = model.track(frame, persist=True, tracker="botsort.yaml", classes=0)# Solo personas
 
         if results[0].boxes.id is not None:
             ids = results[0].boxes.id.cpu().numpy().astype(int)

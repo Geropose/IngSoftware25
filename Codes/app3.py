@@ -30,7 +30,7 @@ def get_tracker_functions(algoritmo='ByteTrack'):
     Returns:
         tuple: (procesar_video, generar_mapa_calor_general, generar_mapa_calor_por_id, generar_mapa_trayectorias)
     """
-    if algoritmo == 'ByteTrack':
+    if algoritmo == 'ByteTrack' or algoritmo == 'BotSort':
         return (
             procesar_video,
             generar_mapa_calor_general,
@@ -242,8 +242,8 @@ with st.sidebar:
     st.subheader("Algoritmo de Tracking")
     algoritmo_tracking = st.radio(
         "Selecciona el algoritmo de tracking:",
-        ["ByteTrack", "DeepSORT"],
-        help="ByteTrack es más rápido, DeepSORT puede ser más preciso en algunos casos"
+        ["ByteTrack", "DeepSORT", "BotSort"],
+        help="ByteTrack es más rápido, DeepSORT puede ser más preciso en algunos casos, BotSort es una variante de ByteTrack"
     )
 
     if 'last_algoritmo_tracking' not in st.session_state:
@@ -383,7 +383,7 @@ if video_file:
                         procesar_video, _, _, _ = get_tracker_functions(algoritmo_seleccionado)
     
                          # Procesar video con el algoritmo seleccionado -- Se agrega el siguiente parametro en la funcion procesar_video nueva_resolucion=st.session_state.resolucion_seleccionada -- Dia del cambio 2025-05-10
-                        output_path, posiciones, video_dims = procesar_video(st.session_state.temp_video_path, nueva_resolucion=st.session_state.resolucion_seleccionada)
+                        output_path, posiciones, video_dims = procesar_video(st.session_state.temp_video_path, nueva_resolucion=st.session_state.resolucion_seleccionada,algoritmo=algoritmo_seleccionado)
                         st.session_state.algoritmo_usado = algoritmo_seleccionado  # Guardar el algoritmo usado
 
                         # Convertir el video de salida para asegurar compatibilidad

@@ -15,7 +15,7 @@ tracker = DeepSort(max_age=30, n_init=3, nms_max_overlap=1.0, max_cosine_distanc
 # Carga el modelo YOLO
 model = YOLO("yolov8n.pt") 
 
-def procesar_video_deepsort(video_path, output_path="output.mp4", nueva_resolucion=None, mostrar_video=False):
+def procesar_video_deepsort(video_path, output_path="output.mp4", nueva_resolucion=None, mostrar_video=False, algoritmo="deepsort"):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise IOError("No se pudo abrir el video")
