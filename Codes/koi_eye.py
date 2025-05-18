@@ -224,7 +224,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Título principal
-st.title("Análisis de Video con YOLO y Mapas de Calor")
+st.title("KOI EYE")
 
 # Barra lateral con configuraciones
 with st.sidebar:
@@ -265,14 +265,6 @@ with st.sidebar:
     st.session_state.show_video_always = st.checkbox("Mostrar video en todas las pestañas", value=True,
                                   help="Mantiene visible el video procesado en todas las pestañas")
     
-    # Información
-    st.subheader("Información")
-    st.info("""
-    Esta aplicación procesa videos para:
-    1. Detectar y seguir personas
-    2. Generar mapas de calor de movimiento
-    3. Visualizar trayectorias individuales
-    """)
 
     st.subheader("Resolución del video")
     resoluciones_disponibles = {
