@@ -26,11 +26,16 @@ def procesar_video_deepsort(video_path, output_path="output.mp4", nueva_resoluci
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     # Resolución personalizada si se especificó
+    #if nueva_resolucion:
+    #    width, height = nueva_resolucion
+    #else:
+    #    width, height = width_original, height_original
     if nueva_resolucion:
+        if nueva_resolucion[0] > width_original or nueva_resolucion[1] > height_original:
+            raise ValueError(f"La resolución solicitada {nueva_resolucion} es mayor que la original {width_original}x{height_original}. Solo se permite comprimir.")
         width, height = nueva_resolucion
     else:
         width, height = width_original, height_original
-
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))

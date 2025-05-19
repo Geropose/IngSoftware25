@@ -243,7 +243,16 @@ with st.sidebar:
     algoritmo_tracking = st.radio(
         "Selecciona el algoritmo de tracking:",
         ["ByteTrack", "DeepSORT", "BotSort"],
-        help="ByteTrack es más rápido, DeepSORT puede ser más preciso en algunos casos, BotSort es una variante de ByteTrack"
+        help=(
+        "¿Qué opción elegir según tu computadora?\n"
+        " No fuerza CPU ni GPU, detecta automáticamente el mejor dispositivo. \n"
+        "- ByteTrack (rápido y liviano): Elegí esta opción si tu computadora no tiene placa de video (GPU) "
+        "o si querés que el video se procese lo más rápido posible. Es ideal para la mayoría de los casos.\n"
+        "- BoT-SORT (más preciso): Usá esta opción si tu computadora tiene una buena GPU y necesitás mayor precisión "
+        "para seguir personas en lugares con mucha gente o movimiento.\n"
+        "- DeepSORT (intermedio): Es una opción más antigua. Tarda más y en algunos casos suele funcionar relativamente mejor, "
+        "pero no se recomienda."
+    )    
     )
 
     if 'last_algoritmo_tracking' not in st.session_state:
