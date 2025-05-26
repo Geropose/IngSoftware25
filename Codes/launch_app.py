@@ -48,7 +48,7 @@ def main():
 
     # Ejecutar Streamlit
     base_path = get_base_path()
-    app3_path = os.path.join(base_path, "Codes", "koi_eye.py")
+    app3_path = os.path.join(base_path, "inicio_koi.py")
 
     cmd = f'python -m streamlit run "{app3_path}" --server.headless true'
     print(f"Lanzando Streamlit con: {cmd}")
