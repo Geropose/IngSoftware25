@@ -2,7 +2,13 @@ import streamlit as st
 import subprocess
 import os
 import webbrowser
-
+from yt_dlp import YoutubeDL
+def get_stream_url(video_url):
+    ydl_opts = {
+    'quiet': True,
+    'format': 'best[ext=m3u8]/best',
+    'skip_download': True
+    }
 st.set_page_config(page_title="Inicio", layout="centered")
 
 st.title("👁️ Bienvenido a KOI Tools")
