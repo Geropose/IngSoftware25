@@ -3,6 +3,8 @@ import subprocess
 import os
 import webbrowser
 from yt_dlp import YoutubeDL
+import requests
+
 def get_stream_url(video_url):
     ydl_opts = {
     'quiet': True,
@@ -34,6 +36,25 @@ if st.button("🎥 KOI-EYE CAM"):
     webbrowser.open_new_tab("http://localhost:8001/video")
 
 st.markdown("---")
+st.subheader("🎛️ Control de captura en Vivo")
+
+# Botón para detener el procesamiento
+if st.button("🛑 Detener KOI-EYE CAM"):
+    try:
+        response = requests.get("http://localhost:8001/stop")
+        if response.status_code == 200:
+            st.success("✅ Captura detenida.")
+        else:
+            st.warning("⚠️ No se pudo detener la captura.")
+    except Exception as e:
+        st.error(f"❌ Error al detener la captura: {e}")
+
+
+if st.button("⬇️ Descargar Captura de Video "):
+    webbrowser.open_new_tab("http://localhost:8001/download")
+
+st.markdown("---")
+
 
 # Botón para ejecutar transmisión YOLOv8
 video_url = st.text_input("📥 Pegá aquí el link del live de YOUTUBE para ejecutarlo en modo KOI-EYE ONLINE:")
@@ -48,9 +69,33 @@ if video_url:
             st.error("❌ No se pudo obtener el stream. Revisá la URL.")
             st.stop()
 
+
+
+
+st.markdown("---")
+
 if st.button("🎥 KOI-EYE ONLINE"):
     koi_live_path = os.path.abspath("./Codes/koi_eye_live.py")
     subprocess.Popen(["python", koi_live_path, stream_link])
     webbrowser.open_new_tab("http://localhost:8000/video")
 
+
+
+st.markdown("---")
+st.subheader("🎛️ Control del Stream en Vivo")
+
+# Botón para detener el procesamiento
+if st.button("🛑 Detener KOI-EYE ONLINE"):
+    try:
+        response = requests.get("http://localhost:8000/stop")
+        if response.status_code == 200:
+            st.success("✅ Transmisión detenida.")
+        else:
+            st.warning("⚠️ No se pudo detener la transmisión.")
+    except Exception as e:
+        st.error(f"❌ Error al detener la transmisión: {e}")
+
+
+if st.button("⬇️ Descargar Video Procesado"):
+    webbrowser.open_new_tab("http://localhost:8000/download")
 
