@@ -31,6 +31,8 @@ current_frame = None
 lock = threading.Lock()
 cap = None
 processing_thread = None
+tracker_algorithm = "bytetrack"  # Default tracker
+target_fps = 25  # Default FPS
 
 # Validación de argumentos
 if len(sys.argv) < 2:
@@ -39,6 +41,33 @@ if len(sys.argv) < 2:
 
 stream_url = sys.argv[1]
 print(f"🎬 Conectando a: {stream_url}")
+
+# Verificar si se proporcionó un algoritmo de tracking
+if len(sys.argv) >= 3:
+    tracker_algorithm = sys.argv[2].lower()
+    if tracker_algorithm not in ["bytetrack", "botsort", "deepsort"]:
+        print(f"⚠️ Algoritmo de tracking no reconocido: {tracker_algorithm}. Usando bytetrack por defecto.")
+        tracker_algorithm = "bytetrack"
+    print(f"🧭 Algoritmo de tracking: {tracker_algorithm}")
+
+# Verificar si se proporcionó un valor de FPS
+if len(sys.argv) >= 4:
+    try:
+        target_fps = float(sys.argv[3])
+        if target_fps <= 0:
+            print("⚠️ FPS debe ser mayor que 0. Usando 25 FPS por defecto.")
+            target_fps = 25
+        elif target_fps > 60:
+            print("⚠️ FPS limitado a 60. Valores muy altos pueden afectar el rendimiento.")
+            target_fps = 60
+    except ValueError:
+        print("⚠️ Valor de FPS no válido. Usando 25 FPS por defecto.")
+        target_fps = 25
+    print(f"⏱️ FPS objetivo: {target_fps}")
+
+# Calcular intervalos de tiempo basados en FPS
+frame_interval = 1.0 / target_fps
+stream_interval = 1.0 / min(target_fps, 30)  # Limitar streaming a máximo 30 FPS para navegadores
 
 def initialize_capture():
     """Inicializa la captura de video"""
@@ -57,13 +86,14 @@ def initialize_capture():
     # Obtener dimensiones del video
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25
+    fps = cap.get(cv2.CAP_PROP_FPS) or target_fps
     video_dims = (width, height)
 
-    print(f"📹 Dimensiones: {width}x{height} @ {fps}fps")
+    print(f"📹 Dimensiones: {width}x{height} @ {fps}fps (fuente)")
+    print(f"📹 Procesando a: {target_fps}fps (objetivo)")
 
     # Inicializar el escritor de video
-    video_writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    video_writer = cv2.VideoWriter(output_path, fourcc, target_fps, (width, height))
     
     return True
 
@@ -102,15 +132,30 @@ def cleanup_resources():
 
 def process_frames():
     """Procesa los frames del video con control de parada mejorado"""
-    global is_streaming, should_stop, video_writer, posiciones, frame_count, current_frame, video_dims
+    global is_streaming, should_stop, video_writer, posiciones, frame_count, current_frame, video_dims, tracker_algorithm
     
-    print("🎬 Iniciando procesamiento de frames...")
+    print(f"🎬 Iniciando procesamiento de frames con algoritmo {tracker_algorithm} a {target_fps} FPS...")
     
     frame_skip_count = 0
     consecutive_fails = 0
     max_fails = 50  # Máximo de fallas consecutivas antes de parar
     
+    last_frame_time = time.time()
+    
     while is_streaming and not should_stop:
+        # Control de FPS - esperar hasta que sea tiempo para el siguiente frame
+        current_time = time.time()
+        elapsed = current_time - last_frame_time
+        
+        if elapsed < frame_interval:
+            # Esperar el tiempo necesario para mantener el FPS objetivo
+            sleep_time = frame_interval - elapsed
+            time.sleep(min(sleep_time, 0.1))  # Limitar a 100ms máximo para poder verificar parada
+            continue
+        
+        # Actualizar tiempo del último frame procesado
+        last_frame_time = time.time()
+        
         if cap is None:
             print("❌ Captura no disponible")
             break
@@ -130,8 +175,9 @@ def process_frames():
         consecutive_fails = 0  # Reset counter on successful read
 
         try:
-            # Procesamiento con YOLO y tracking
-            results = model.track(frame, persist=True, tracker="bytetrack.yaml", classes=0)
+            # Procesamiento con YOLO y tracking usando el algoritmo seleccionado
+            tracker_config = f"{tracker_algorithm}.yaml"
+            results = model.track(frame, persist=True, tracker=tracker_config, classes=0)
             
             # Dibujar detecciones y almacenar posiciones
             annotated_frame = frame.copy()
@@ -166,9 +212,14 @@ def process_frames():
             if should_stop:
                 break
             
-            # Agregar información de frame y estado
-            status_text = "STOPPING" if should_stop else "RECORDING"
+            # Agregar información de frame, estado, algoritmo y FPS
+            status_text = f"{tracker_algorithm.upper()} @ {target_fps}FPS - {('STOPPING' if should_stop else 'RECORDING')}"
             cv2.putText(annotated_frame, f"Frame: {frame_count} - {status_text}", (20, 40), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            
+            # Calcular FPS real
+            real_fps = 1.0 / (time.time() - last_frame_time) if (time.time() - last_frame_time) > 0 else 0
+            cv2.putText(annotated_frame, f"FPS real: {real_fps:.1f}", (20, 70), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
             
             # Guardar frame en el video solo si no se está deteniendo
@@ -183,14 +234,6 @@ def process_frames():
         except Exception as e:
             print(f"❌ Error procesando frame {frame_count}: {e}")
             continue
-        
-        # Verificar parada con más frecuencia
-        if should_stop:
-            print("🛑 Señal de parada recibida, saliendo del bucle...")
-            break
-        
-        # Pausa muy pequeña para permitir verificaciones de parada
-        time.sleep(0.005)
     
     # Limpieza final
     print("🛑 Finalizando procesamiento...")
@@ -232,7 +275,7 @@ def generar_mapa_calor():
     # Crear figura
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.imshow(heatmap, cmap='inferno', interpolation='nearest')
-    ax.set_title('Mapa de Calor General', fontsize=14, color='white')
+    ax.set_title(f'Mapa de Calor General ({tracker_algorithm.upper()} @ {target_fps}FPS)', fontsize=14, color='white')
     ax.axis('off')
     
     # Convertir a imagen
@@ -297,7 +340,7 @@ def generar_mapa_trayectorias():
     if trayectorias_dibujadas <= 10 and trayectorias_dibujadas > 0:
         ax.legend(loc='upper right', bbox_to_anchor=(1.15, 1))
     
-    ax.set_title('Mapa de Trayectorias', fontsize=14, color='white')
+    ax.set_title(f'Mapa de Trayectorias ({tracker_algorithm.upper()} @ {target_fps}FPS)', fontsize=14, color='white')
     ax.axis('off')
     
     # Convertir a imagen
@@ -354,7 +397,7 @@ def generar_mapa_calor_por_id(id):
         ax.plot(coords[0, 0], coords[0, 1], 'go', markersize=8)  # Inicio en verde
         ax.plot(coords[-1, 0], coords[-1, 1], 'ro', markersize=8)  # Fin en rojo
     
-    ax.set_title(f'Análisis ID {id} - {len(trayectoria)} puntos', fontsize=14, color='white')
+    ax.set_title(f'Análisis ID {id} - {len(trayectoria)} puntos ({tracker_algorithm.upper()} @ {target_fps}FPS)', fontsize=14, color='white')
     ax.axis('off')
     
     # Convertir a imagen
@@ -367,7 +410,20 @@ def generar_mapa_calor_por_id(id):
 
 def gen_frames():
     """Generador para streaming de video"""
+    last_frame_time = time.time()
+    
     while is_streaming and not should_stop:
+        # Control de FPS para streaming
+        current_time = time.time()
+        elapsed = current_time - last_frame_time
+        
+        if elapsed < stream_interval:
+            # Esperar el tiempo necesario para mantener el FPS objetivo para streaming
+            time.sleep(min(stream_interval - elapsed, 0.01))  # Pequeña espera para no saturar CPU
+            continue
+            
+        last_frame_time = time.time()
+        
         with lock:
             if current_frame is not None:
                 frame = current_frame.copy()
@@ -381,21 +437,35 @@ def gen_frames():
         
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        
-        time.sleep(0.04)  # ~25 FPS
 
 @app.get("/")
 def root():
     return {
         "message": "KOI Tracker Live API", 
         "status": "running" if is_streaming else "stopped",
+        "tracker": tracker_algorithm,
+        "fps": target_fps,
         "endpoints": ["/video", "/heatmap", "/trajectories", "/heatmap/{id}", "/stats", "/stop", "/download", "/force_stop"]
     }
 
 @app.get("/video")
 def video():
+    global is_streaming
+    
+    # Si el servicio está detenido, intentar reiniciarlo automáticamente
     if not is_streaming:
-        raise HTTPException(status_code=503, detail="El servicio está detenido")
+        try:
+            # Reiniciar el servicio
+            restart_result = restart()
+            if "status" in restart_result and restart_result["status"] == "running":
+                # Reinicio exitoso
+                pass
+            else:
+                # No se pudo reiniciar
+                raise HTTPException(status_code=503, detail="No se pudo reiniciar el servicio")
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"El servicio está detenido y no se pudo reiniciar: {str(e)}")
+    
     return StreamingResponse(gen_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 @app.get("/heatmap")
@@ -436,6 +506,8 @@ def stats():
             "frames_procesados": frame_count,
             "ids_activos": list(posiciones.keys()),
             "status": "running" if is_streaming and not should_stop else "stopped",
+            "tracker": tracker_algorithm,
+            "fps": target_fps,
             "video_file_exists": os.path.exists(output_path)
         }
 
@@ -462,7 +534,9 @@ def stop():
     return {
         "message": "✅ Stream detenido. El video se ha guardado.",
         "video_available": os.path.exists(output_path),
-        "frames_processed": frame_count
+        "frames_processed": frame_count,
+        "tracker": tracker_algorithm,
+        "fps": target_fps
     }
 
 @app.get("/force_stop")
@@ -480,7 +554,67 @@ def force_stop():
     return {
         "message": "💥 Parada forzada ejecutada",
         "video_available": os.path.exists(output_path),
-        "frames_processed": frame_count
+        "frames_processed": frame_count,
+        "tracker": tracker_algorithm,
+        "fps": target_fps
+    }
+@app.get("/id_positions/{id}")
+def id_positions(id: int):
+    """Devuelve todas las posiciones registradas para un ID específico"""
+    with lock:
+        if id not in posiciones or not posiciones[id]:
+            raise HTTPException(status_code=404, detail=f"No hay datos para el ID {id}")
+            
+        # Obtener las posiciones para este ID
+        positions_data = posiciones[id][:]
+        
+        # Convertir a formato más amigable para JSON
+        formatted_positions = []
+        for cx, cy, conf, frame_num in positions_data:
+            formatted_positions.append({
+                "frame": int(frame_num),
+                "x": int(cx),
+                "y": int(cy),
+                "confidence": float(conf)
+            })
+        
+        return {
+            "id": id,
+            "count": len(formatted_positions),
+            "positions": formatted_positions
+        }
+    
+@app.get("/restart")
+def restart():
+    """Reinicia el servicio de streaming"""
+    global is_streaming, should_stop, frame_count, current_frame, posiciones
+    
+    # Si ya está en ejecución, no hacer nada
+    if is_streaming and not should_stop:
+        return {
+            "message": "El servicio ya está en ejecución",
+            "status": "running"
+        }
+    
+    # Reiniciar variables importantes
+    is_streaming = True
+    should_stop = False
+    
+    # Reiniciar la captura si es necesario
+    if cap is None or not cap.isOpened():
+        if not initialize_capture():
+            raise HTTPException(status_code=500, detail="No se pudo reiniciar la captura")
+    
+    # Reiniciar el hilo de procesamiento
+    global processing_thread
+    if processing_thread is None or not processing_thread.is_alive():
+        processing_thread = threading.Thread(target=process_frames, daemon=False)
+        processing_thread.start()
+        print("🔄 Hilo de procesamiento reiniciado")
+    
+    return {
+        "message": "✅ Servicio reiniciado correctamente",
+        "status": "running"
     }
 
 @app.get("/download")
@@ -490,7 +624,7 @@ def download():
         if file_size > 0:
             return FileResponse(
                 output_path, 
-                filename="video_procesado.mp4", 
+                filename=f"video_procesado_{tracker_algorithm}_{target_fps}fps.mp4", 
                 media_type="video/mp4",
                 headers={"Content-Length": str(file_size)}
             )
@@ -519,6 +653,8 @@ if __name__ == "__main__":
     try:
         print(f"🚀 Iniciando servidor KOI Tracker Live en http://localhost:8000")
         print(f"📹 Stream: {stream_url}")
+        print(f"🧭 Algoritmo de tracking: {tracker_algorithm}")
+        print(f"⏱️ FPS objetivo: {target_fps}")
         print(f"📊 Endpoints disponibles:")
         print(f"- /video - Ver video en tiempo real")
         print(f"- /heatmap - Ver mapa de calor general")
