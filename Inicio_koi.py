@@ -211,8 +211,15 @@ with tab2:
             camera_id = camera_option
 
     with col2:
-        tracker_option = st.selectbox("🧭 Algoritmo de tracking:", 
-                                    ["Liviano (bytetrack) ", "Pesado (botsort)" ])
+        tracker_display = st.selectbox("🧭 Algoritmo de tracking:", 
+                                    ["Liviano (bytetrack)", "Pesado (botsort)"])
+        
+        # Mapear a los valores correctos
+        tracker_mapping = {
+            "Liviano (bytetrack)": "bytetrack",
+            "Pesado (botsort)": "botsort"
+        }
+        tracker_option = tracker_mapping[tracker_display]
 
     with col3:
         fps_option_cam = st.slider("⏱️ FPS:", 
@@ -228,6 +235,7 @@ with tab2:
                 tracker_option,
                 str(fps_option_cam)
             ])
+            time.sleep(10)
             webbrowser.open_new_tab("http://localhost:8001/video")
             st.success(f"KOI Eye Cam iniciado con {tracker_option} a {fps_option_cam} FPS")
             
@@ -272,7 +280,7 @@ with tab2:
         try:
             response = requests.get("http://localhost:8001/heatmap", timeout=10)
             if response.status_code == 200:
-                st.image(response.content, caption="Mapa de Calor CAM", use_column_width=True)
+                st.image(response.content, caption="Mapa de Calor CAM", use_container_width=True)
             else:
                 webbrowser.open_new_tab("http://localhost:8001/heatmap")
         except Exception as e:
@@ -283,7 +291,7 @@ with tab2:
         try:
             response = requests.get("http://localhost:8001/trajectories", timeout=10)
             if response.status_code == 200:
-                st.image(response.content, caption="Mapa de Trayectorias CAM", use_column_width=True)
+                st.image(response.content, caption="Mapa de Calor CAM", use_container_width=True)
             else:
                 webbrowser.open_new_tab("http://localhost:8001/trajectories")
         except Exception as e:
@@ -299,7 +307,7 @@ with tab2:
         try:
             response = requests.get(f"http://localhost:8001/heatmap/{int(id_persona_cam)}", timeout=15)
             if response.status_code == 200:
-                st.image(response.content, caption=f"Análisis ID {id_persona_cam} (CAM)", use_column_width=True)
+                st.image(response.content, caption=f"Análisis ID {id_persona_cam} (CAM)", use_container_width=True)
             elif response.status_code == 404:
                 st.warning(f"⚠️ No hay datos para ID {id_persona_cam}")
             else:
@@ -345,7 +353,15 @@ with tab3:
     col1, col2 = st.columns(2)
 
     with col1:
-        tracker_option = st.selectbox("🧭 Elegí el algoritmo de seguimiento:", ["Liviano (bytetrack)", "Pesado (botsort)"])
+        tracker_display = st.selectbox("🧭 Elegí el algoritmo de seguimiento:", 
+                                 ["Liviano (bytetrack)", "Pesado (botsort)"])
+    
+        # Mapear a los valores correctos
+        tracker_mapping = {
+            "Liviano (bytetrack)": "bytetrack", 
+            "Pesado (botsort)": "botsort"
+        }
+        tracker_option = tracker_mapping[tracker_display]
         fps_live = st.slider("⏱️ FPS:", min_value=1, max_value=30, value=20, step=1, key="online_fps_slider")
         video_url = st.text_input("📥 Pegá aquí el link del live de YOUTUBE:")
 
@@ -366,17 +382,16 @@ with tab3:
             if st.button("🔥 KOI-TRACKER LIVE ONLINE"):
                 st.success("Iniciando KOI-TRACKER LIVE ONLINE")
                 koi_tracker_path = os.path.abspath("./Codes/koi_tracker_live.py")
-                #subprocess.Popen(["python", koi_tracker_path, st.session_state.stream_link])
                 # Agregar antes de llamar al subprocess
 
                 # Luego llamar al subprocess con el valor seleccionado
                 subprocess.Popen(["python", koi_tracker_path, st.session_state.stream_link, tracker_option, str(fps_live)])
-                time.sleep(3)
+                time.sleep(15)
                 
                 # Abrir múltiples pestañas
                 webbrowser.open_new_tab("http://localhost:8000/video")
-                #webbrowser.open_new_tab("http://localhost:8000/heatmap")
-                #webbrowser.open_new_tab("http://localhost:8000/trajectories")
+
+
 
 
     with col2:
@@ -419,7 +434,7 @@ with tab3:
         try:
             response = requests.get("http://localhost:8000/heatmap", timeout=10)
             if response.status_code == 200:
-                st.image(response.content, caption="Mapa de Calor General", use_column_width=True)
+                st.image(response.content, caption="Mapa de Calor General", use_container_width=True)
             else:
                 webbrowser.open_new_tab("http://localhost:8000/heatmap")
         except Exception as e:
@@ -430,7 +445,7 @@ with tab3:
         try:
             response = requests.get("http://localhost:8000/trajectories", timeout=10)
             if response.status_code == 200:
-                st.image(response.content, caption="Mapa de Trayectorias", use_column_width=True)
+                st.image(response.content, caption="Mapa de Trayectorias", use_container_width=True)
             else:
                 webbrowser.open_new_tab("http://localhost:8000/trajectories")
         except Exception as e:
@@ -477,7 +492,7 @@ with tab3:
         try:
             response = requests.get(f"http://localhost:8000/heatmap/{int(id_persona)}", timeout=15)
             if response.status_code == 200:
-                st.image(response.content, caption=f"Análisis ID {id_persona}", use_column_width=True)
+                st.image(response.content, caption=f"Análisis ID {id_persona}", use_container_width=True)
             elif response.status_code == 404:
                 st.warning(f"⚠️ No hay datos para ID {id_persona}")
             else:
