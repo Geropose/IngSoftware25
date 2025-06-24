@@ -232,7 +232,65 @@ def generar_mapa_trayectorias_deepsort(posiciones, video_dims, min_frames=10):
         ax.legend(loc='upper right', bbox_to_anchor=(1.1, 1))
     
     ax.axis('off')
-    
+
+    return fig
+
+
+def detectar_grupos(posiciones, distancia_minima=50, min_personas=2):
+    """Detecta grupos de personas a partir de las posiciones registradas."""
+    frames = defaultdict(dict)
+    for pid, puntos in posiciones.items():
+        for x, y, _, frame in puntos:
+            frames[frame][pid] = (x, y)
+
+    grupos = defaultdict(list)
+    for frame, id_pos in frames.items():
+        sin_visitar = set(id_pos.keys())
+        while sin_visitar:
+            actual = sin_visitar.pop()
+            grupo = {actual}
+            cola = [actual]
+            while cola:
+                cid = cola.pop()
+                cx, cy = id_pos[cid]
+                for otro in list(sin_visitar):
+                    ox, oy = id_pos[otro]
+                    if np.hypot(cx - ox, cy - oy) <= distancia_minima:
+                        grupo.add(otro)
+                        cola.append(otro)
+                        sin_visitar.remove(otro)
+            if len(grupo) >= min_personas:
+                grupos[frame].append(grupo)
+    return grupos
+
+
+def generar_mapa_calor_grupos(posiciones, grupos_por_frame, video_dims, sigma=15):
+    """Genera un mapa de calor de centros de grupos."""
+    width, height = video_dims
+    heatmap = np.zeros((height, width))
+
+    for frame, grupos in grupos_por_frame.items():
+        for grupo in grupos:
+            xs, ys = [], []
+            for pid in grupo:
+                for x, y, _, f in posiciones.get(pid, []):
+                    if f == frame:
+                        xs.append(x)
+                        ys.append(y)
+                        break
+            if xs and ys:
+                cx = int(np.mean(xs))
+                cy = int(np.mean(ys))
+                if 0 <= cx < width and 0 <= cy < height:
+                    heatmap[cy, cx] += 1
+
+    heatmap = gaussian_filter(heatmap, sigma=sigma)
+    if np.max(heatmap) > 0:
+        heatmap = heatmap / np.max(heatmap)
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.imshow(heatmap, cmap='magma', interpolation='nearest')
+    ax.axis('off')
     return fig
 
 """

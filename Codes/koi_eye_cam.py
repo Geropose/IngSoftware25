@@ -403,6 +403,72 @@ def generar_mapa_calor_por_id(id):
     
     return buf
 
+
+def detectar_grupos(local_posiciones, distancia_minima=50, min_personas=2):
+    """Detecta grupos de personas por proximidad."""
+    frames = defaultdict(dict)
+    for pid, puntos in local_posiciones.items():
+        for x, y, _, frame in puntos:
+            frames[frame][pid] = (x, y)
+
+    grupos = defaultdict(list)
+    for frame, id_pos in frames.items():
+        sin_visitar = set(id_pos.keys())
+        while sin_visitar:
+            actual = sin_visitar.pop()
+            grupo = {actual}
+            cola = [actual]
+            while cola:
+                cid = cola.pop()
+                cx, cy = id_pos[cid]
+                for otro in list(sin_visitar):
+                    ox, oy = id_pos[otro]
+                    if np.hypot(cx - ox, cy - oy) <= distancia_minima:
+                        grupo.add(otro)
+                        cola.append(otro)
+                        sin_visitar.remove(otro)
+            if len(grupo) >= min_personas:
+                grupos[frame].append(grupo)
+    return grupos
+
+
+def generar_mapa_calor_grupos(local_posiciones, grupos_por_frame, sigma=15):
+    """Genera un mapa de calor para los centros de los grupos detectados."""
+    width, height = video_dims
+    heatmap = np.zeros((height, width))
+
+    for frame, grupos in grupos_por_frame.items():
+        for grupo in grupos:
+            xs, ys = [], []
+            for pid in grupo:
+                for x, y, _, f in local_posiciones.get(pid, []):
+                    if f == frame:
+                        xs.append(x)
+                        ys.append(y)
+                        break
+            if xs and ys:
+                cx = int(np.mean(xs))
+                cy = int(np.mean(ys))
+                if 0 <= cx < width and 0 <= cy < height:
+                    heatmap[cy, cx] += 1
+
+    heatmap = gaussian_filter(heatmap, sigma=sigma)
+    if np.max(heatmap) == 0:
+        return None
+    heatmap = heatmap / np.max(heatmap)
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.imshow(heatmap, cmap='magma', interpolation='nearest')
+    ax.set_title(f'Mapa de Grupos ({tracker_algorithm.upper()} @ {target_fps}FPS)', fontsize=14, color='white')
+    ax.axis('off')
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, facecolor='black')
+    buf.seek(0)
+    plt.close(fig)
+
+    return buf
+
 # ENDPOINTS ORIGINALES
 
 @app.get("/")
@@ -413,7 +479,7 @@ def root():
         "tracker": tracker_algorithm,
         "fps": target_fps,
         "port": server_port,
-        "endpoints": ["/video", "/stop", "/download", "/status", "/heatmap", "/trajectories", "/heatmap/{id}", "/stats"]
+        "endpoints": ["/video", "/stop", "/download", "/status", "/heatmap", "/trajectories", "/heatmap/{id}", "/group_heatmap", "/stats"]
     }
 
 @app.get("/video")
@@ -449,6 +515,8 @@ def stop():
 
 @app.get("/status")
 def status():
+    grupos = detectar_grupos({k: v[:] for k, v in posiciones.items()})
+    total_grupos = sum(len(g) for g in grupos.values())
     return {
         "status": "running" if is_streaming else "stopped",
         "tracker": tracker_algorithm,
@@ -456,6 +524,7 @@ def status():
         "port": server_port,
         "personas_detectadas": len(posiciones),
         "frames_procesados": frame_count,
+        "grupos_detectados": total_grupos,
         "video_file_exists": os.path.exists(output_path)
     }
 
@@ -507,13 +576,34 @@ def heatmap_by_id(id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al generar mapa de calor: {str(e)}")
 
+
+@app.get("/group_heatmap")
+def group_heatmap():
+    try:
+        with lock:
+            if not posiciones:
+                raise HTTPException(status_code=404, detail="No hay datos suficientes")
+            local_pos = {k: v[:] for k, v in posiciones.items()}
+        grupos = detectar_grupos(local_pos)
+        if not grupos:
+            raise HTTPException(status_code=404, detail="No se detectaron grupos")
+        buf = generar_mapa_calor_grupos(local_pos, grupos)
+        if buf is None:
+            raise HTTPException(status_code=404, detail="No se pudo generar el mapa de grupos")
+        return Response(content=buf.getvalue(), media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al generar mapa de grupos: {str(e)}")
+
 @app.get("/stats")
 def stats():
     with lock:
+        grupos = detectar_grupos({k: v[:] for k, v in posiciones.items()})
+        total_grupos = sum(len(g) for g in grupos.values())
         return {
             "personas_detectadas": len(posiciones),
             "frames_procesados": frame_count,
             "ids_activos": list(posiciones.keys()),
+            "grupos_detectados": total_grupos,
             "status": "running" if is_streaming else "stopped",
             "tracker": tracker_algorithm,
             "fps": target_fps,
@@ -610,6 +700,7 @@ if __name__ == "__main__":
         print(f"- /heatmap - Ver mapa de calor general")
         print(f"- /trajectories - Ver mapa de trayectorias")
         print(f"- /heatmap/ID - Ver mapa de calor para un ID específico")
+        print(f"- /group_heatmap - Ver mapa de grupos")
         print(f"- /stats - Ver estadísticas de tracking")
         print(f"- /stop - Detener procesamiento")
         print(f"- /download - Descargar video procesado")
