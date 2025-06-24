@@ -1,15 +1,19 @@
 import streamlit as st
 from tracker import (
-    procesar_video as procesar_video, 
-    generar_mapa_calor_general as generar_mapa_calor_general, 
+    procesar_video as procesar_video,
+    generar_mapa_calor_general as generar_mapa_calor_general,
     generar_mapa_calor_por_id as generar_mapa_calor_por_id,
-    generar_mapa_trayectorias as generar_mapa_trayectorias
+    generar_mapa_trayectorias as generar_mapa_trayectorias,
+    detectar_grupos as detectar_grupos,
+    generar_mapa_calor_grupos as generar_mapa_calor_grupos
 )
 from trackerDeepSort import (
     procesar_video_deepsort,
     generar_mapa_calor_general_deepsort,
     generar_mapa_calor_por_id_deepsort,
-    generar_mapa_trayectorias_deepsort
+    generar_mapa_trayectorias_deepsort,
+    detectar_grupos as detectar_grupos_deepsort,
+    generar_mapa_calor_grupos as generar_mapa_calor_grupos_deepsort
 )
 import tempfile
 import os
@@ -28,21 +32,27 @@ def get_tracker_functions(algoritmo='ByteTrack'):
         algoritmo (str): Nombre del algoritmo ('ByteTrack' o 'DeepSORT')
         
     Returns:
-        tuple: (procesar_video, generar_mapa_calor_general, generar_mapa_calor_por_id, generar_mapa_trayectorias)
+        tuple: (procesar_video, generar_mapa_calor_general,
+        generar_mapa_calor_por_id, generar_mapa_trayectorias,
+        detectar_grupos_func, generar_mapa_calor_grupos_func)
     """
     if algoritmo == 'ByteTrack' or algoritmo == 'BotSort':
         return (
             procesar_video,
             generar_mapa_calor_general,
             generar_mapa_calor_por_id,
-            generar_mapa_trayectorias
+            generar_mapa_trayectorias,
+            detectar_grupos,
+            generar_mapa_calor_grupos
         )
     else:  # DeepSORT
         return (
             procesar_video_deepsort,
             generar_mapa_calor_general_deepsort,
             generar_mapa_calor_por_id_deepsort,
-            generar_mapa_trayectorias_deepsort
+            generar_mapa_trayectorias_deepsort,
+            detectar_grupos_deepsort,
+            generar_mapa_calor_grupos_deepsort
         )
 
 # Función para reiniciar el estado de procesamiento
@@ -342,6 +352,9 @@ if video_file:
                 st.write(f"IDs detectados: {len(st.session_state.posiciones)}")
                 total_points = sum(len(points) for points in st.session_state.posiciones.values())
                 st.write(f"Total de puntos: {total_points}")
+                if 'grupos' in st.session_state:
+                    total_grupos = sum(len(g) for g in st.session_state.grupos.values())
+                    st.write(f"Grupos detectados: {total_grupos}")
                 st.write(f"Video: {st.session_state.video_file_name}")
         
         st.markdown("---")
@@ -381,7 +394,7 @@ if video_file:
                         # Procesar video (en una implementación real)
                         # Obtener las funciones correspondientes al algoritmo seleccionado
                         algoritmo_seleccionado = st.session_state.get('algoritmo_tracking', 'ByteTrack')
-                        procesar_video, _, _, _ = get_tracker_functions(algoritmo_seleccionado)
+                        procesar_video, _, _, _, detectar_grupos_func, _ = get_tracker_functions(algoritmo_seleccionado)
     
                          # Procesar video con el algoritmo seleccionado -- Se agrega el siguiente parametro en la funcion procesar_video nueva_resolucion=st.session_state.resolucion_seleccionada -- Dia del cambio 2025-05-10
                         output_path, posiciones, video_dims = procesar_video(st.session_state.temp_video_path, nueva_resolucion=st.session_state.resolucion_seleccionada,algoritmo=algoritmo_seleccionado)
@@ -397,6 +410,7 @@ if video_file:
                         st.session_state.output_path = output_display_path
                         st.session_state.posiciones = posiciones
                         st.session_state.video_dims = video_dims
+                        st.session_state.grupos = detectar_grupos_func(posiciones)
                         st.session_state.processed = True
                         
                         st.success("Procesamiento terminado.")
@@ -419,7 +433,7 @@ if video_file:
             st.subheader("Mapas de Calor")
             
             # Generar mapas de calor con algoritmo seleccionado
-            _, generar_mapa_calor_general, generar_mapa_calor_por_id, _ = get_tracker_functions(
+            _, generar_mapa_calor_general, generar_mapa_calor_por_id, _, _, generar_mapa_calor_grupos = get_tracker_functions(
             st.session_state.get('algoritmo_usado', 'ByteTrack')
             )
 
@@ -499,13 +513,22 @@ if video_file:
                         st.warning("No hay datos suficientes para este ID.")
                 else:
                     st.warning("No se detectaron IDs en el video.")
+
+            if 'grupos' in st.session_state and st.session_state.grupos:
+                st.markdown("### Mapa de Grupos")
+                fig_grupos = generar_mapa_calor_grupos(
+                    st.session_state.posiciones,
+                    st.session_state.grupos,
+                    st.session_state.video_dims
+                )
+                st.pyplot(fig_grupos)
     
     # Pestaña de trayectorias
     with tabs[2]:
         st.session_state.current_tab = "Trayectorias"
         
         # Obtener la función de generación de trayectorias según el algoritmo usado
-        _, _, _, generar_mapa_trayectorias = get_tracker_functions(
+        _, _, _, generar_mapa_trayectorias, _, _ = get_tracker_functions(
         st.session_state.get('algoritmo_usado', 'ByteTrack')
         )
 
