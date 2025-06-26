@@ -545,6 +545,34 @@ with tab3:
         if st.button("⬇️ Descargar Video Online"):
             webbrowser.open_new_tab("http://localhost:8000/download")
 
+    if st.button("👥 Mapa de Grupos Online"):
+        try:
+            response = requests.get("http://localhost:8000/groups?max_distancia=100&min_frames=10", timeout=15)
+            if response.status_code == 200:
+                st.image(response.content, caption="Mapa de Grupos Online", use_container_width=True)
+            else:
+                webbrowser.open_new_tab("http://localhost:8000/groups")
+        except Exception as e:
+            st.warning("⚠️ Abriendo en navegador...")
+            webbrowser.open_new_tab("http://localhost:8000/groups")
+
+    if st.button("👥 Ver Grupos Online (IDs)"):
+        try:
+            response = requests.get("http://localhost:8000/groups?raw=true", timeout=10)
+            if response.status_code == 200:
+                grupos = response.json().get("grupos", [])
+                if grupos:
+                    st.markdown("### 🧑‍🤝‍🧑 Grupos detectados:")
+                    for i, grupo in enumerate(grupos, 1):
+                        st.markdown(f"**Grupo {i}:** {', '.join(map(str, grupo))}")
+                else:
+                    st.info("No se detectaron grupos.")
+            else:
+                st.warning("No se pudo obtener la información de grupos.")
+        except Exception as e:
+            st.error(f"Error al consultar grupos: {e}")
+
+    
     st.subheader("📊 Visualización en Tiempo Real")
 
     if st.button("🌡️ Mapa de Calor"):
