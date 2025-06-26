@@ -645,6 +645,72 @@ def generar_mapa_calor_grupos(local_posiciones, grupos_por_frame, sigma=15):
     buf.seek(0)
     plt.close(fig)
 
+
+def detectar_grupos(local_posiciones, distancia_minima=50, min_personas=2):
+    """Detecta grupos de personas por proximidad."""
+    frames = defaultdict(dict)
+    for pid, puntos in local_posiciones.items():
+        for x, y, _, frame in puntos:
+            frames[frame][pid] = (x, y)
+
+    grupos = defaultdict(list)
+    for frame, id_pos in frames.items():
+        sin_visitar = set(id_pos.keys())
+        while sin_visitar:
+            actual = sin_visitar.pop()
+            grupo = {actual}
+            cola = [actual]
+            while cola:
+                cid = cola.pop()
+                cx, cy = id_pos[cid]
+                for otro in list(sin_visitar):
+                    ox, oy = id_pos[otro]
+                    if np.hypot(cx - ox, cy - oy) <= distancia_minima:
+                        grupo.add(otro)
+                        cola.append(otro)
+                        sin_visitar.remove(otro)
+            if len(grupo) >= min_personas:
+                grupos[frame].append(grupo)
+    return grupos
+
+
+def generar_mapa_calor_grupos(local_posiciones, grupos_por_frame, sigma=15):
+    """Genera un mapa de calor para los centros de los grupos detectados."""
+    width, height = video_dims
+    heatmap = np.zeros((height, width))
+
+    for frame, grupos in grupos_por_frame.items():
+        for grupo in grupos:
+            xs, ys = [], []
+            for pid in grupo:
+                for x, y, _, f in local_posiciones.get(pid, []):
+                    if f == frame:
+                        xs.append(x)
+                        ys.append(y)
+                        break
+            if xs and ys:
+                cx = int(np.mean(xs))
+                cy = int(np.mean(ys))
+                if 0 <= cx < width and 0 <= cy < height:
+                    heatmap[cy, cx] += 1
+
+    heatmap = gaussian_filter(heatmap, sigma=sigma)
+    if np.max(heatmap) == 0:
+        return None
+    heatmap = heatmap / np.max(heatmap)
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.imshow(heatmap, cmap='magma', interpolation='nearest')
+    ax.set_title(f'Mapa de Grupos ({tracker_algorithm.upper()} @ {target_fps}FPS)', fontsize=14, color='white')
+    ax.axis('off')
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, facecolor='black')
+    buf.seek(0)
+    plt.close(fig)
+
+
+
 def gen_frames():
     """Generador para streaming de video"""
     last_frame_time = time.time()
@@ -976,12 +1042,15 @@ def stats():
     with lock:
         total_eventos_direccion = sum(len(eventos) for eventos in eventos_cambio_direccion.values())
         
+        grupos = detectar_grupos({k: v[:] for k, v in posiciones.items()})
+        total_grupos = sum(len(g) for g in grupos.values())
         return {
             "personas_detectadas": len(posiciones),
             "frames_procesados": frame_count,
             "ids_activos": list(posiciones.keys()),
             "eventos_cambio_direccion": total_eventos_direccion,
             "ids_con_eventos_direccion": len(eventos_cambio_direccion),
+            "grupos_detectados": total_grupos,
             "status": "running" if is_streaming and not should_stop else "stopped",
             "tracker": tracker_algorithm,
             "fps": target_fps,
@@ -1071,6 +1140,7 @@ if __name__ == "__main__":
         print(f"- /direction_stats - Ver estadísticas de cambios de dirección")
         print(f"- /ids_with_events - Ver solo IDs que tienen eventos")
         print(f"- /direction_report/ID - Generar reporte TXT para un ID (solo cuando está detenido)")
+        print(f"- /group_heatmap - Ver mapa de grupos")
         print(f"- /stats - Ver estadísticas generales")
         print(f"- /stop - Detener procesamiento")
         print(f"- /download - Descargar video procesado")
