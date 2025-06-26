@@ -7,6 +7,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.ndimage import gaussian_filter
 
+from scipy.spatial.distance import cdist
+from itertools import combinations
+import pandas as pd
+
 # Carga el modelo YOLO
 model = YOLO("yolov8n.pt")  # Usa el modelo ligero por velocidad
 
@@ -285,4 +289,111 @@ def generar_mapa_calor_grupos(posiciones, grupos_por_frame, video_dims, sigma=15
     ax.imshow(heatmap, cmap='magma', interpolation='nearest')
     ax.axis('off')
     
+    return fig
+
+
+
+def calcular_proximidad(posiciones, max_distancia=100, min_frames_conjuntos=10):
+
+    # Convertir datos a DataFrame para análisis
+    frames = []
+    for id, puntos in posiciones.items():
+        for punto in puntos:
+            frames.append({
+                'id': id,
+                'frame': punto[3],
+                'x': punto[0],
+                'y': punto[1]
+            })
+    df = pd.DataFrame(frames)
+    
+    # Encontrar frames únicos
+    unique_frames = df['frame'].unique()
+    grupos = []
+    
+    for frame in unique_frames:
+        # Filtrar datos del frame actual
+        frame_data = df[df['frame'] == frame]
+        if len(frame_data) < 2:
+            continue
+            
+        # Calcular distancias entre todos los pares
+        coords = frame_data[['x', 'y']].values
+        dists = cdist(coords, coords)
+        
+        # Encontrar pares cercanos
+        ids = frame_data['id'].values
+        for i, j in combinations(range(len(ids)), 2):
+            if dists[i, j] <= max_distancia:
+                grupos.append((ids[i], ids[j]))
+    
+    # Contar coincidencias y filtrar por min_frames_conjuntos
+    if not grupos:
+        return []
+    
+    df_grupos = pd.DataFrame(grupos, columns=['id1', 'id2'])
+    counts = df_grupos.groupby(['id1', 'id2']).size().reset_index(name='counts')
+    grupos_filtrados = counts[counts['counts'] >= min_frames_conjuntos]
+    
+    # Convertir a lista de conjuntos
+    grupos_finales = []
+    for _, row in grupos_filtrados.iterrows():
+        id1, id2 = row['id1'], row['id2']
+        encontrado = False
+        for grupo in grupos_finales:
+            if id1 in grupo or id2 in grupo:
+                grupo.update({id1, id2})
+                encontrado = True
+                break
+        if not encontrado:
+            grupos_finales.append({id1, id2})
+    
+    return grupos_finales
+
+
+
+def generar_mapa_grupos(posiciones, grupos, video_dims, sigma=10):
+
+    width, height = video_dims
+    heatmap = np.zeros((height, width))
+    
+    for grupo in grupos:
+        for id in grupo:
+            for cx, cy, conf, _ in posiciones[id]:
+                if 0 <= cx < width and 0 <= cy < height:
+                    heatmap[cy, cx] += conf
+    
+    heatmap = gaussian_filter(heatmap, sigma=sigma)
+    if np.max(heatmap) > 0:
+        heatmap = heatmap / np.max(heatmap)
+    
+    # Crear figura con espacio para la leyenda externa
+    fig, ax = plt.subplots(figsize=(10, 8))
+    plt.subplots_adjust(right=0.7) 
+    
+    # Mapa de calor
+    img = ax.imshow(heatmap, cmap='plasma', interpolation='nearest')
+    
+
+    colors = plt.cm.tab20(np.linspace(0, 1, len(grupos))) 
+    handles = []
+    for i, (grupo, color) in enumerate(zip(grupos, colors)):
+        puntos = []
+        for id in grupo:
+            puntos.extend([(x[0], x[1]) for x in posiciones[id]])
+        if puntos:
+            puntos = np.array(puntos)
+            centro = np.mean(puntos, axis=0)
+            dot = ax.plot(centro[0], centro[1], 'o', markersize=12, 
+                         color=color, alpha=0.8)[0]
+            handles.append(dot)
+    
+
+    legend_labels = [f"Grupo {i+1}" for i in range(len(grupos))]
+    ax.legend(handles, legend_labels, 
+              bbox_to_anchor=(1.05, 1), 
+              loc='upper left', 
+              title="Grupos")
+    
+    ax.axis('off')
     return fig
