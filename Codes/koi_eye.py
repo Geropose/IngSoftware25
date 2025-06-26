@@ -5,7 +5,9 @@ from tracker import (
     generar_mapa_calor_por_id as generar_mapa_calor_por_id,
     generar_mapa_trayectorias as generar_mapa_trayectorias,
     detectar_grupos as detectar_grupos,
-    generar_mapa_calor_grupos as generar_mapa_calor_grupos
+    generar_mapa_calor_grupos as generar_mapa_calor_grupos,
+    calcular_proximidad as calcular_proximidad,
+    generar_mapa_grupos as generar_mapa_grupos
 )
 from trackerDeepSort import (
     procesar_video_deepsort,
@@ -407,6 +409,11 @@ with st.sidebar:
                              help="Cambio mínimo de ángulo para considerar un cambio de dirección")
     min_distancia = st.slider("Distancia mínima de movimiento", 5, 50, 10,
                              help="Distancia mínima entre puntos para calcular dirección")
+
+    # Parámetros para la detección de grupos
+    st.subheader("Agrupamiento")
+    max_distancia = st.slider("Distancia máxima para agrupar (píxeles)", 50, 200, 100)
+    min_frames_grupo = st.slider("Mínimo de frames juntos", 5, 50, 10)
     
     # Selector de algoritmo de tracking
     st.subheader("Algoritmo de Tracking")
@@ -491,7 +498,7 @@ if video_file:
             st.session_state.display_video_path = st.session_state.temp_video_path
     
     # Crear pestañas para organizar la interfaz
-    tab_names = ["Procesamiento", "Mapas de Calor", "Trayectorias", "Eventos de Dirección"]
+    tab_names = ["Procesamiento", "Mapas de Calor", "Trayectorias", "Eventos de Dirección", "Grupos"]
     tabs = st.tabs(tab_names)
     
     # Mostrar video procesado en la parte superior si está habilitado y procesado
@@ -856,7 +863,48 @@ if video_file:
                 """)
         else:
             st.info("Primero debes procesar un video para ver los eventos de cambio de dirección.")
-
+    # pestaña de grupos
+    with tabs[4]:
+            st.session_state.current_tab = "Grupos"
+            if st.session_state.get('processed', False):
+                st.subheader("Agrupamiento de Personas")
+        
+                # Calcular grupos
+                grupos = calcular_proximidad(
+                    st.session_state.posiciones,
+                    max_distancia=max_distancia,
+                    min_frames_conjuntos=min_frames_grupo
+                )
+        
+                if grupos:
+                    # lista compacta de grupos
+                    st.markdown("**Grupos detectados (IDs):**")
+                    cols = st.columns(3) 
+                    for i, grupo in enumerate(grupos, 1):
+                        with cols[i % 3]:  # Distribuye los grupos en columnas
+                            st.markdown(f"🔹 **Grupo {i}**: `{', '.join(map(str, grupo))}`")
+            
+                    # Mapa de calor 
+                    fig_grupos = generar_mapa_grupos(
+                        st.session_state.posiciones,
+                        grupos,
+                        st.session_state.video_dims,
+                        sigma=sigma_general
+                    )
+                    st.pyplot(fig_grupos, bbox_inches='tight')  
+            
+                    # Opción para descargar
+                    buf = tempfile.NamedTemporaryFile(suffix='.png')
+                    fig_grupos.savefig(buf, format='png', bbox_inches='tight')
+                    st.download_button(
+                        label="Descargar Mapa de Grupos",
+                        data=buf.read(),
+                        file_name="grupos.png",
+                        mime="image/png"
+                    )
+                else:
+                    st.warning("No se encontraron grupos con los criterios actuales.")
+    
 else:
     # Mensaje cuando no hay video
     st.info("👆 Subí un video para comenzar el análisis")
