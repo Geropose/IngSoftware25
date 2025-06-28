@@ -767,6 +767,26 @@ with tab3:
         except Exception as e:
             st.warning(f"⚠️ Abriendo en navegador...")
             webbrowser.open_new_tab(f"http://localhost:8000/heatmap/{int(id_persona)}")
+    
+        # Nuevo botón para guardar estado de movimiento en un archivo
+    if st.button("💾 Guardar Estado de Movimiento", key="save_movement_report"):
+        try:
+            response = requests.get("http://localhost:8000/movement_report", timeout=15)
+            if response.status_code == 200:
+                from datetime import datetime
+                filename = f"resumen_movimiento_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                st.download_button(
+                    label="⬇️ Descargar Resumen",
+                    data=response.content,
+                    file_name=filename,
+                    mime="text/plain",
+                )
+                st.success("✅ Resumen generado correctamente")
+            else:
+                st.error(f"❌ Error al generar resumen: {response.status_code}")
+        except Exception as e:
+            st.error(f"❌ Error: {str(e)}")
+
 
 # Footer
 st.markdown("---")

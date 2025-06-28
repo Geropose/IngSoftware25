@@ -34,6 +34,13 @@ output_path = "stream_output.mp4"
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 posiciones = defaultdict(list)
 eventos_cambio_direccion = defaultdict(list)  # Nueva variable para eventos
+
+#--
+estado_persona = defaultdict(lambda: "Moviendo")  # Estado actual de cada ID
+contador_cambios_tray = defaultdict(int)  # Conteo de cambios de trayectoria
+ultimo_movimiento = defaultdict(int)  # Último frame con movimiento
+#--
+
 video_dims = (640, 480)
 frame_count = 0
 current_frame = None
@@ -42,6 +49,12 @@ cap = None
 processing_thread = None
 tracker_algorithm = "bytetrack"  # Default tracker
 target_fps = 25  # Default FPS
+
+#--
+# Parámetros para detección de quietud
+umbral_quieto = 5  # Distancia mínima para considerar que hay movimiento
+frames_quieto = 30  # Número de frames para considerar estado quieto
+#--
 
 # Parámetros para detección de cambios de dirección
 umbral_angulo = 30  # Cambio mínimo de ángulo para considerar cambio de dirección
@@ -116,8 +129,14 @@ def detectar_cambio_direccion_tiempo_real(id_obj, nueva_posicion):
         id_obj: ID del objeto
         nueva_posicion: Nueva posición (x, y, conf, frame)
     """
-    global eventos_cambio_direccion, posiciones
+    # Declaracion anterior
+    #global eventos_cambio_direccion, posiciones
     
+    #Declaracion nueva 28-06-2025
+    global eventos_cambio_direccion, posiciones, contador_cambios_tray
+
+
+
     # Necesitamos al menos 2 posiciones anteriores para detectar cambio
     if len(posiciones[id_obj]) < 2:
         return
@@ -180,6 +199,10 @@ def detectar_cambio_direccion_tiempo_real(id_obj, nueva_posicion):
         # Almacenar evento con lock para thread safety
         with lock:
             eventos_cambio_direccion[id_obj].append(evento)
+
+            # Cuento los cambios de trayectorias 28-06-2025
+            contador_cambios_tray[id_obj] += 1
+
             # Limitar histórico de eventos para no usar demasiada memoria
             if len(eventos_cambio_direccion[id_obj]) > 100:
                 eventos_cambio_direccion[id_obj] = eventos_cambio_direccion[id_obj][-50:]
@@ -367,12 +390,27 @@ def process_frames():
                     cy = int((y1 + y2) / 2)
                     
                     nueva_posicion = (cx, cy, conf, frame_count)
+
+
                     
                     # Detectar cambio de dirección ANTES de almacenar
                     detectar_cambio_direccion_tiempo_real(id, nueva_posicion)
                     
-                    # Almacenar posición
+
+                    # Almacenar posición y actualizar estado de movimiento
                     with lock:
+                        # Agregado el 28-06-2025
+                        if posiciones[id]:
+                            ultimo_punto = posiciones[id][-1]
+                            dist = math.hypot(nueva_posicion[0] - ultimo_punto[0],
+                                             nueva_posicion[1] - ultimo_punto[1])
+                            if dist > umbral_quieto:
+                                ultimo_movimiento[id] = frame_count
+                                estado_persona[id] = "Moviendo"
+                        else:
+                            ultimo_movimiento[id] = frame_count
+                        # Hasta aca Agregado el 28-06-2025
+                        
                         posiciones[id].append(nueva_posicion)
                         if len(posiciones[id]) > 1000:
                             posiciones[id] = posiciones[id][-500:]
@@ -388,7 +426,14 @@ def process_frames():
                             ultimo_evento = eventos_cambio_direccion[id][-1]
                             if frame_count - ultimo_evento['frame'] <= 30:
                                 info_text += f" 🔄{ultimo_evento['direccion_nueva']}"
-                    
+                        # Agregado el 28-06-2025
+                        if frame_count - ultimo_movimiento[id] >= frames_quieto:
+                            estado_persona[id] = "Quieto"
+
+                        info_text += f" | Estado: {estado_persona[id]}"
+                        info_text += f" | cambios_tray: {contador_cambios_tray[id]}"
+
+
                     cv2.putText(annotated_frame, info_text, (x1, y1 - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             
@@ -850,9 +895,10 @@ def root():
             "min_distance": min_distancia
         },
         "endpoints": [
-            "/video", "/direction_events", "/direction_events/{id}", 
+            "/video", "/direction_events", "/direction_events/{id}",
             "/direction_stats", "/stats", "/stop", "/download",
-            "/ids_with_events", "/direction_report/{id}"
+            "/ids_with_events", "/direction_report/{id}",
+            "/movement_report"
         ]
     }
 
@@ -891,6 +937,7 @@ def heatmap_by_id(id: int):
         return Response(content=buf.getvalue(), media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al generar mapa de calor: {str(e)}")
+
 
 
 @app.get("/group_heatmap")
@@ -994,6 +1041,43 @@ def direction_report(id: int):
                 "Content-Disposition": f"attachment; filename=reporte_eventos_id_{id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
             }
         )
+    
+
+@app.get("/movement_report")
+def movement_report():
+    """Genera un reporte de texto con el estado y cambios de trayectoria de cada ID"""
+    from datetime import datetime
+
+    with lock:
+        if not posiciones:
+            raise HTTPException(status_code=404, detail="No hay datos para generar el reporte")
+
+        ids = sorted(posiciones.keys())
+        lines = []
+        lines.append("REPORTE DE MOVIMIENTO\n")
+        lines.append("=" * 60 + "\n\n")
+        lines.append(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+
+        for pid in ids:
+            state = estado_persona[pid]
+            last_move = ultimo_movimiento[pid]
+            change_count = contador_cambios_tray[pid]
+            lines.append(f"ID {pid}\n")
+            lines.append(f"  Estado: {state}\n")
+            lines.append(f"  Último movimiento: Frame {last_move}\n")
+            lines.append(f"  Cambios de trayectoria: {change_count}\n\n")
+
+        report_text = "".join(lines)
+
+    return Response(
+        content=report_text,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename=resumen_movimientos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        }
+    )
+
+
 
 @app.get("/direction_events")
 def direction_events():
@@ -1278,6 +1362,7 @@ if __name__ == "__main__":
         print(f"- /direction_stats - Ver estadísticas de cambios de dirección")
         print(f"- /ids_with_events - Ver solo IDs que tienen eventos")
         print(f"- /direction_report/ID - Generar reporte TXT para un ID (solo cuando está detenido)")
+        print(f"- /movement_report - Descargar reporte de movimiento actual")
         print(f"- /group_heatmap - Ver mapa de grupos")
         print(f"- /stats - Ver estadísticas generales")
         print(f"- /stop - Detener procesamiento")
