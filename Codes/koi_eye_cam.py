@@ -12,6 +12,7 @@ import io
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from scipy.ndimage import gaussian_filter
+import math
 import matplotlib
 matplotlib.use('Agg')  # Usar backend no interactivo
 
@@ -34,6 +35,20 @@ frame_count = 0
 video_dims = (640, 480)  # Se actualizará con las dimensiones reales
 lock = threading.Lock()  # Para acceso seguro a variables compartidas
 
+
+# Variables para detección de cambios de dirección y estado de movimiento
+eventos_cambio_direccion = defaultdict(list)
+estado_persona = defaultdict(lambda: "Moviendo")
+contador_cambios_tray = defaultdict(int)
+ultimo_movimiento = defaultdict(int)
+
+# Parámetros de detección
+umbral_quieto = 5        # Distancia mínima para considerar que hay movimiento
+frames_quieto = 15       # Frames para marcar estado quieto
+umbral_angulo = 30       # Umbral de cambio de dirección en grados
+min_distancia = 10       # Distancia mínima entre puntos para calcular dirección
+
+
 # Procesar argumentos de línea de comandos
 if len(sys.argv) >= 2:
     camera_id = sys.argv[1]
@@ -54,7 +69,7 @@ if len(sys.argv) >= 3:
         tracker_algorithm = "bytetrack"
     print(f"🧭 Algoritmo de tracking: {tracker_algorithm}")
 
-# Verificar si se proporcionó un valor de FPS
+# Parámetros adicionales: umbral de ángulo, distancia mínima y puerto opcional
 if len(sys.argv) >= 4:
     try:
         target_fps = float(sys.argv[3])
@@ -72,7 +87,29 @@ if len(sys.argv) >= 4:
 # Verificar si se proporcionó un puerto personalizado
 if len(sys.argv) >= 5:
     try:
-        server_port = int(sys.argv[4])
+        umbral_angulo = float(sys.argv[4])
+        if umbral_angulo < 5 or umbral_angulo > 90:
+            print("⚠️ Umbral de ángulo debe estar entre 5 y 90 grados. Usando 30 por defecto.")
+            umbral_angulo = 30
+    except ValueError:
+        print("⚠️ Valor de umbral de ángulo no válido. Usando 30 por defecto.")
+        umbral_angulo = 30
+    print(f"📐 Umbral de cambio de ángulo: {umbral_angulo}°")
+
+if len(sys.argv) >= 6:
+    try:
+        min_distancia = float(sys.argv[5])
+        if min_distancia < 1 or min_distancia > 100:
+            print("⚠️ Distancia mínima debe estar entre 1 y 100 píxeles. Usando 10 por defecto.")
+            min_distancia = 10
+    except ValueError:
+        print("⚠️ Valor de distancia mínima no válido. Usando 10 por defecto.")
+        min_distancia = 10
+    print(f"📏 Distancia mínima: {min_distancia} píxeles")
+
+if len(sys.argv) >= 7:
+    try:
+        server_port = int(sys.argv[6])
         if server_port < 1024 or server_port > 65535:
             print("⚠️ Puerto debe estar entre 1024 y 65535. Usando 8001 por defecto.")
             server_port = 8001
@@ -84,6 +121,88 @@ if len(sys.argv) >= 5:
 # Calcular intervalos de tiempo basados en FPS
 frame_interval = 1.0 / target_fps
 stream_interval = 1.0 / min(target_fps, 30)  # Limitar streaming a máximo 30 FPS para navegadores
+
+def calcular_angulo_direccion(p1, p2):
+    """Calcula el ángulo de dirección entre dos puntos"""
+    dx = p2[0] - p1[0]
+    dy = p2[1] - p1[1]
+    if dx == 0 and dy == 0:
+        return None
+    ang_rad = math.atan2(dy, dx)
+    ang_deg = math.degrees(ang_rad)
+    if ang_deg < 0:
+        ang_deg += 360
+    return ang_deg
+
+
+def direccion_a_texto(angulo):
+    """Convierte un ángulo a texto descriptivo"""
+    if angulo is None:
+        return "Sin movimiento"
+    if 337.5 <= angulo or angulo < 22.5:
+        return "derecha"
+    elif 22.5 <= angulo < 67.5:
+        return "abajo-derecha"
+    elif 67.5 <= angulo < 112.5:
+        return "abajo"
+    elif 112.5 <= angulo < 157.5:
+        return "abajo-izquierda"
+    elif 157.5 <= angulo < 202.5:
+        return "izquierda"
+    elif 202.5 <= angulo < 247.5:
+        return "arriba-izquierda"
+    elif 247.5 <= angulo < 292.5:
+        return "arriba"
+    elif 292.5 <= angulo < 337.5:
+        return "arriba-derecha"
+    else:
+        return "dirección desconocida"
+
+
+def detectar_cambio_direccion_tiempo_real(pid, nueva_pos):
+    """Detecta cambios de dirección para un ID específico"""
+    if len(posiciones[pid]) < 2:
+        return
+
+    ultimas = posiciones[pid][-2:] + [nueva_pos]
+    if len(ultimas) < 3:
+        return
+
+    p_ant = ultimas[-3]
+    p_mid = ultimas[-2]
+    p_act = ultimas[-1]
+
+    dist1 = math.hypot(p_mid[0] - p_ant[0], p_mid[1] - p_ant[1])
+    dist2 = math.hypot(p_act[0] - p_mid[0], p_act[1] - p_mid[1])
+    if dist1 < min_distancia or dist2 < min_distancia:
+        return
+
+    ang_prev = calcular_angulo_direccion(p_ant, p_mid)
+    ang_curr = calcular_angulo_direccion(p_mid, p_act)
+    if ang_prev is None or ang_curr is None:
+        return
+
+    diff = abs(ang_curr - ang_prev)
+    if diff > 180:
+        diff = 360 - diff
+
+    if diff >= umbral_angulo:
+        evento = {
+            'frame': p_act[3],
+            'timestamp': time.time(),
+            'posicion': (p_act[0], p_act[1]),
+            'direccion_anterior': direccion_a_texto(ang_prev),
+            'direccion_nueva': direccion_a_texto(ang_curr),
+            'angulo_anterior': round(ang_prev, 1),
+            'angulo_nuevo': round(ang_curr, 1),
+            'cambio_angulo': round(diff, 1)
+        }
+
+        with lock:
+            eventos_cambio_direccion[pid].append(evento)
+            contador_cambios_tray[pid] += 1
+            if len(eventos_cambio_direccion[pid]) > 100:
+                eventos_cambio_direccion[pid] = eventos_cambio_direccion[pid][-50:]
 
 def initialize_capture():
     """Inicializa la captura de video"""
@@ -164,12 +283,43 @@ def gen_frames():
                     cx = int((x1 + x2) / 2)
                     cy = int((y1 + y2) / 2)
                     
-                    # Almacenar posición con peso (confianza) y frame
+                    nueva_pos = (cx, cy, conf, frame_count)
+
+                    # Detectar cambio de dirección antes de almacenar
+                    detectar_cambio_direccion_tiempo_real(id, nueva_pos)
+
+                    # Almacenar posición y actualizar estado de movimiento
                     with lock:
-                        posiciones[id].append((cx, cy, conf, frame_count))
-                        # Limitar histórico para no usar demasiada memoria
+                        if posiciones[id]:
+                            ultimo_punto = posiciones[id][-1]
+                            dist = math.hypot(nueva_pos[0] - ultimo_punto[0],
+                                             nueva_pos[1] - ultimo_punto[1])
+                            if dist > umbral_quieto:
+                                ultimo_movimiento[id] = frame_count
+                                estado_persona[id] = "Moviendo"
+                        else:
+                            ultimo_movimiento[id] = frame_count
+
+                        posiciones[id].append(nueva_pos)
                         if len(posiciones[id]) > 1000:
                             posiciones[id] = posiciones[id][-500:]
+
+                    # Mostrar información en pantalla
+                    info_text = f"ID: {id} ({conf:.2f})"
+                    with lock:
+                        if id in eventos_cambio_direccion and eventos_cambio_direccion[id]:
+                            ultimo_evento = eventos_cambio_direccion[id][-1]
+                            if frame_count - ultimo_evento['frame'] <= 30:
+                                info_text += f" 🔄{ultimo_evento['direccion_nueva']}"
+
+                        if frame_count - ultimo_movimiento[id] >= frames_quieto:
+                            estado_persona[id] = "Quieto"
+
+                        info_text += f" | Estado: {estado_persona[id]}"
+                        info_text += f" | cambios_tray: {contador_cambios_tray[id]}"
+
+                    cv2.putText(annotated_frame, info_text, (x1, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             
             # Calcular FPS real
             real_fps = 1.0 / (time.time() - last_frame_time) if (time.time() - last_frame_time) > 0 else 0
@@ -479,8 +629,15 @@ def root():
         "tracker": tracker_algorithm,
         "fps": target_fps,
         "port": server_port,
-        "endpoints": ["/video", "/stop", "/download", "/status", "/heatmap", "/trajectories", "/heatmap/{id}", "/group_heatmap", "/stats"]
-    }
+        "direction_detection": {
+            "angle_threshold": umbral_angulo,
+            "min_distance": min_distancia
+        },
+        "endpoints": [
+            "/video", "/stop", "/download", "/status",
+            "/heatmap", "/trajectories", "/heatmap/{id}",
+            "/group_heatmap", "/stats", "/movement_report"
+        ]    }
 
 @app.get("/video")
 def video():
@@ -543,6 +700,39 @@ def download():
             raise HTTPException(status_code=422, detail="El archivo de video está vacío")
     else:
         raise HTTPException(status_code=404, detail="El archivo de video no está disponible. Asegúrate de haber ejecutado el procesamiento.")
+
+@app.get("/movement_report")
+def movement_report():
+    """Genera un reporte de texto con el estado de movimiento y cambios de trayectoria"""
+    from datetime import datetime
+
+    with lock:
+        if not posiciones:
+            raise HTTPException(status_code=404, detail="No hay datos para generar el reporte")
+
+        ids = sorted(posiciones.keys())
+        lines = ["REPORTE DE MOVIMIENTO\n", "=" * 60 + "\n\n", f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"]
+
+        for pid in ids:
+            state = estado_persona[pid]
+            last_move = ultimo_movimiento[pid]
+            change_count = contador_cambios_tray[pid]
+            lines.append(f"ID {pid}\n")
+            lines.append(f"  Estado: {state}\n")
+            lines.append(f"  Último movimiento: Frame {last_move}\n")
+            lines.append(f"  Cambios de trayectoria: {change_count}\n\n")
+
+        report_text = "".join(lines)
+
+    return Response(
+        content=report_text,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename=resumen_movimientos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        }
+    )
+
+
 
 # NUEVOS ENDPOINTS PARA MAPAS DE CALOR
 
@@ -694,6 +884,9 @@ if __name__ == "__main__":
         print(f"🚀 Iniciando servidor KOI Eye Cam en http://localhost:{server_port}")
         print(f"🧭 Algoritmo de tracking: {tracker_algorithm}")
         print(f"⏱️ FPS objetivo: {target_fps}")
+        print(f"🔄 Detección de cambios de dirección:")
+        print(f"   - Umbral de ángulo: {umbral_angulo}°")
+        print(f"   - Distancia mínima: {min_distancia} píxeles")
         print(f"📊 Endpoints disponibles:")
         print(f"- /video - Ver video en tiempo real")
         print(f"- /heatmap - Ver mapa de calor general")
@@ -703,6 +896,7 @@ if __name__ == "__main__":
         print(f"- /stats - Ver estadísticas de tracking")
         print(f"- /stop - Detener procesamiento")
         print(f"- /download - Descargar video procesado")
+        print(f"- /movement_report - Descargar reporte de movimiento")
         
         uvicorn.run("__main__:app", host="0.0.0.0", port=server_port, log_level="warning")
         

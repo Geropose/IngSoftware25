@@ -362,6 +362,24 @@ with tab2:
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
 
+    if st.button("💾 Guardar Estado de Movimiento CAM", key="save_movement_report_cam"):
+        try:
+            response = requests.get("http://localhost:8001/movement_report", timeout=15)
+            if response.status_code == 200:
+                from datetime import datetime
+                filename = f"resumen_movimiento_cam_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                st.download_button(
+                    label="⬇️ Descargar Resumen CAM",
+                    data=response.content,
+                    file_name=filename,
+                    mime="text/plain",
+                )
+                st.success("✅ Resumen CAM generado correctamente")
+            else:
+                st.error(f"❌ Error al generar resumen: {response.status_code}")
+        except Exception as e:
+            st.error(f"❌ Error: {str(e)}")
+
     # SECCIÓN ACTUALIZADA: Eventos de cambio de dirección para CAM
     st.markdown("### 🔄 Eventos de Cambio de Dirección (CAM)")
     
