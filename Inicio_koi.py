@@ -230,17 +230,9 @@ with tab1:
 with tab2:
     st.header("👁️ KOI Eye Cam")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2 = st.columns(2)
 
     with col1:
-        camera_option = camera_selector(key_prefix="eye_cam")
-        
-        if camera_option == "RTSP URL":
-            camera_id = st.text_input("URL de la cámara:", "rtsp://ejemplo.com/stream")
-        else:
-            camera_id = camera_option
-
-    with col2:
         tracker_display = st.selectbox("🧭 Algoritmo de tracking:", 
                                     ["Liviano (bytetrack)", "Pesado (botsort)"])
         
@@ -250,30 +242,32 @@ with tab2:
         }
         tracker_option = tracker_mapping[tracker_display]
 
-    with col3:
+        camera_option = camera_selector(key_prefix="eye_cam")
+        
+        if camera_option == "RTSP URL":
+            camera_id = st.text_input("URL de la cámara:", "rtsp://ejemplo.com/stream")
+        else:
+            camera_id = camera_option
+
         fps_option_cam = st.slider("⏱️ FPS:", 
                             min_value=1, max_value=30, value=20, step=1, key="cam_fps_slider")
+         # NUEVA SECCIÓN: Parámetros de detección de cambios de dirección para CAM
+        st.markdown("Configuración de Detección de Cambios de Dirección (CAM)")
 
-    # NUEVA SECCIÓN: Parámetros de detección de cambios de dirección para CAM
-    st.markdown("### 🔄 Configuración de Detección de Cambios de Dirección (CAM)")
-    col_cam_1, col_cam_2 = st.columns(2)
-    
-    with col_cam_1:
         umbral_angulo_cam = st.slider(
             "📐 Umbral de ángulo (CAM):", 
             min_value=15, max_value=90, value=30, step=5, 
             key="cam_umbral_angulo",
             help="Cambio mínimo de ángulo para considerar un cambio de dirección"
         )
-    
-    with col_cam_2:
+
         min_distancia_cam = st.slider(
             "📏 Distancia mínima (CAM):", 
             min_value=5, max_value=50, value=10, step=5, 
             key="cam_min_distancia",
             help="Distancia mínima entre puntos para calcular dirección"
         )
-
+   
     if st.button("▶️ Iniciar KOI Eye Cam"):
         with st.spinner("Iniciando cámara con tracking..."):
             koi_eye_cam_path = os.path.abspath("./Codes/koi_eye_cam.py")
@@ -291,7 +285,7 @@ with tab2:
             st.success(f"KOI Eye Cam iniciado con {tracker_option} a {fps_option_cam} FPS")
             st.info(f"Parámetros: Umbral {umbral_angulo_cam}°, Distancia mín {min_distancia_cam}px")
 
-    with col4:
+    with col2:
         st.markdown("**🎥 Control CAM (Puerto 8001):**")
             
         if st.button("🛑 Detener CAM"):
@@ -319,9 +313,10 @@ with tab2:
         if st.button("⬇️ Descargar Video CAM"):
             webbrowser.open_new_tab("http://localhost:8001/download")
 
-    st.markdown("---")
-    st.subheader("📊 Visualización CAM en Tiempo Real")
 
+
+    st.markdown("---")
+    st.markdown("### Analisis general ")
     if st.button("🌡️ Mapa de Calor CAM"):
         try:
             response = requests.get("http://localhost:8001/heatmap", timeout=10)
@@ -345,11 +340,11 @@ with tab2:
             webbrowser.open_new_tab("http://localhost:8001/trajectories")
 
     # Análisis por ID específico para CAM
-    st.markdown("### 🎯 Análisis por ID (CAM)")
+    st.markdown("### Análisis por ID ")
 
     id_persona_cam = st.number_input("ID CAM:", min_value=0, step=1, value=0, key="id_cam")
 
-    if st.button("🔍 Analizar ID CAM"):
+    if st.button("Trazar trayectoria del ID seleccionado CAM"):
         try:
             response = requests.get(f"http://localhost:8001/heatmap/{int(id_persona_cam)}", timeout=15)
             if response.status_code == 200:
@@ -374,14 +369,13 @@ with tab2:
                     file_name=filename,
                     mime="text/plain",
                 )
-                st.success("✅ Resumen CAM generado correctamente")
+                st.success("✅ Resumen generado correctamente")
             else:
                 st.error(f"❌ Error al generar resumen: {response.status_code}")
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
 
     # SECCIÓN ACTUALIZADA: Eventos de cambio de dirección para CAM
-    st.markdown("### 🔄 Eventos de Cambio de Dirección (CAM)")
     
     # Obtener IDs con eventos para CAM (si el endpoint existe)
     ids_with_events_cam = get_ids_with_events(8001)
@@ -400,7 +394,7 @@ with tab2:
         
         cam_id_for_events = cam_id_values[selected_cam_index]
         
-        if st.button("🔄 Ver Eventos de Dirección CAM", key="direction_events_cam"):
+        if st.button("Ver eventos de direcciones del ID", key="direction_events_cam"):
             try:
                 response = requests.get(f"http://localhost:8001/direction_events/{cam_id_for_events}", timeout=15)
                 
@@ -420,9 +414,9 @@ with tab2:
                 st.error(f"❌ Error: {str(e)}")
     else:
         # Fallback al método anterior si no hay endpoint nuevo
-        cam_id_for_events = st.number_input("ID para eventos de dirección (CAM):", min_value=0, step=1, value=0, key="cam_events_id")
+        cam_id_for_events = st.number_input("Registro de cambio de dirección por ID", min_value=0, step=1, value=0, key="cam_events_id")
 
-        if st.button("🔄 Ver Eventos de Dirección CAM", key="trajectory_events_cam"):
+        if st.button(" Ver Eventos de Dirección CAM", key="trajectory_events_cam"):
             try:
                 response = requests.get(f"http://localhost:8001/trajectory_events/{cam_id_for_events}", timeout=15)
                 
@@ -442,10 +436,10 @@ with tab2:
                 st.error(f"❌ Error: {str(e)}")
 
     # Datos de posición para CAM
-    st.markdown("### 📊 Datos de Posición CAM")
-    cam_id_for_stats = st.number_input("ID para estadísticas (CAM):", min_value=0, step=1, value=0)
 
-    if st.button("📊 Ver Datos CAM", key="simple_stats_cam"):
+    cam_id_for_stats = st.number_input("Posicion frame por frame por ID:", min_value=0, step=1, value=0)
+
+    if st.button("Mostrar registro frame por frame ", key="simple_stats_cam"):
         try:
             response = requests.get(f"http://localhost:8001/id_positions/{cam_id_for_stats}", timeout=15)
             
@@ -488,19 +482,16 @@ with tab3:
         fps_live = st.slider("⏱️ FPS:", min_value=1, max_value=30, value=20, step=1, key="online_fps_slider")
         video_url = st.text_input("📥 Pegá aquí el link del live de YOUTUBE:")
 
-    # NUEVA SECCIÓN: Parámetros de detección de cambios de dirección para Online
-    st.markdown("### 🔄 Configuración de Detección de Cambios de Dirección (Online)")
-    col_online_1, col_online_2 = st.columns(2)
-    
-    with col_online_1:
+        # NUEVA SECCIÓN: Parámetros de detección de cambios de dirección para Online
+        st.markdown(" Configuración de Detección de Cambios de Dirección (Online)")
+
         umbral_angulo_online = st.slider(
             "📐 Umbral de ángulo (Online):", 
             min_value=15, max_value=90, value=30, step=5, 
             key="online_umbral_angulo",
             help="Cambio mínimo de ángulo para considerar un cambio de dirección"
         )
-    
-    with col_online_2:
+        
         min_distancia_online = st.slider(
             "📏 Distancia mínima (Online):", 
             min_value=5, max_value=50, value=10, step=5, 
@@ -520,7 +511,7 @@ with tab3:
                     st.error("❌ No se pudo obtener el stream. Revisá la URL.")
                     st.stop()
         
-        if st.button("🔥 KOI-TRACKER LIVE ONLINE"):
+        if st.button("🔥 EJECUTAR "):
             st.success("Iniciando KOI-TRACKER LIVE ONLINE")
             koi_tracker_path = os.path.abspath("./Codes/koi_tracker_live.py")
             subprocess.Popen([
@@ -563,7 +554,21 @@ with tab3:
         if st.button("⬇️ Descargar Video Online"):
             webbrowser.open_new_tab("http://localhost:8000/download")
 
-    if st.button("👥 Mapa de Grupos Online"):
+    
+    
+    st.subheader("Visualización general")
+
+    if st.button("🌡️ Mapa de Calor"):
+        try:
+            response = requests.get("http://localhost:8000/heatmap", timeout=10)
+            if response.status_code == 200:
+                st.image(response.content, caption="Mapa de Calor General", use_container_width=True)
+            else:
+                webbrowser.open_new_tab("http://localhost:8000/heatmap")
+        except Exception as e:
+            st.warning(f"⚠️ Abriendo en navegador...")
+            webbrowser.open_new_tab("http://localhost:8000/heatmap")
+    if st.button("👥 Ver grupos detectados"):
         try:
             response = requests.get("http://localhost:8000/groups?max_distancia=100&min_frames=10", timeout=15)
             if response.status_code == 200:
@@ -574,7 +579,7 @@ with tab3:
             st.warning("⚠️ Abriendo en navegador...")
             webbrowser.open_new_tab("http://localhost:8000/groups")
 
-    if st.button("👥 Ver Grupos Online (IDs)"):
+    if st.button("👥 Ver IDs pertenecientes a cada grupo"):
         try:
             response = requests.get("http://localhost:8000/groups?raw=true", timeout=10)
             if response.status_code == 200:
@@ -590,20 +595,6 @@ with tab3:
         except Exception as e:
             st.error(f"Error al consultar grupos: {e}")
 
-    
-    st.subheader("📊 Visualización en Tiempo Real")
-
-    if st.button("🌡️ Mapa de Calor"):
-        try:
-            response = requests.get("http://localhost:8000/heatmap", timeout=10)
-            if response.status_code == 200:
-                st.image(response.content, caption="Mapa de Calor General", use_container_width=True)
-            else:
-                webbrowser.open_new_tab("http://localhost:8000/heatmap")
-        except Exception as e:
-            st.warning(f"⚠️ Abriendo en navegador...")
-            webbrowser.open_new_tab("http://localhost:8000/heatmap")
-
     if st.button("🛣️ Trayectorias"):
         try:
             response = requests.get("http://localhost:8000/trajectories", timeout=10)
@@ -616,10 +607,10 @@ with tab3:
             webbrowser.open_new_tab("http://localhost:8000/trajectories")
 
     # SECCIÓN COMPLETAMENTE ACTUALIZADA: Eventos de cambio de dirección para Online
-    st.markdown("### 🔄 Eventos de Cambio de Dirección Online")
+    st.markdown("### Analisis por ID")
     
     # NUEVO BOTÓN: Verificar IDs con cambios de dirección
-    if st.button("🔍 Verificar IDs con Cambios de Dirección", key="verify_direction_changes_online"):
+    if st.button("🔍 Mostrar IDs con cambios de dirección", key="verify_direction_changes_online"):
         with st.spinner("🔄 Verificando IDs con cambios de dirección..."):
             
             # Obtener IDs con eventos usando el endpoint
@@ -737,11 +728,10 @@ with tab3:
     else:
         st.info("👆 Presiona el botón 'Verificar IDs con Cambios de Dirección' para buscar IDs con eventos")
 
-    # Datos de posición para Online
-    st.markdown("### 📊 Datos de Posición Online")
+
     online_id_for_stats = st.number_input("ID para estadísticas (Online):", min_value=0, step=1, value=0)
 
-    if st.button("📊 Ver Datos Online", key="simple_stats_online"):
+    if st.button("Mostrar registro de posiciones del ID seleccionado", key="simple_stats_online"):
         try:
             response = requests.get(f"http://localhost:8000/id_positions/{online_id_for_stats}", timeout=15)
             
@@ -768,12 +758,11 @@ with tab3:
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
 
-    # Análisis por ID específico
-    st.markdown("### 🎯 Análisis por ID")
+
 
     id_persona = st.number_input("ID:", min_value=0, step=1, value=0)
 
-    if st.button("🔍 Analizar ID"):
+    if st.button("Trazar trayectoria del ID seleccionado"):
         try:
             response = requests.get(f"http://localhost:8000/heatmap/{int(id_persona)}", timeout=15)
             if response.status_code == 200:

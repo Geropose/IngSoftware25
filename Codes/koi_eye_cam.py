@@ -766,6 +766,41 @@ def heatmap_by_id(id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al generar mapa de calor: {str(e)}")
     
+@app.get("/ids_with_events")
+def ids_with_events():
+    """Devuelve solo los IDs que tienen eventos de cambio de dirección"""
+    try:
+        with lock:
+            if not eventos_cambio_direccion:
+                return {
+                    "ids_with_events": [],
+                    "total_ids": 0,
+                    "tracker_status": "running" if is_streaming and not should_stop else "stopped"
+                }
+
+            ids_con_eventos = []
+            for id_obj, eventos in eventos_cambio_direccion.items():
+                if eventos:
+                    last_event = eventos[-1]
+                    frame_value = int(last_event.get('frame', -1)) if isinstance(last_event, dict) else -1
+
+                    ids_con_eventos.append({
+                        "id": int(id_obj),  # <-- 🔥 ESTA línea soluciona el error
+                        "event_count": int(len(eventos)),
+                        "last_event_frame": frame_value
+                    })
+
+            ids_con_eventos.sort(key=lambda x: x['event_count'], reverse=True)
+
+            return {
+                "ids_with_events": ids_con_eventos,
+                "total_ids": int(len(ids_con_eventos)),
+                "tracker_status": "running" if is_streaming and not should_stop else "stopped"
+            }
+    except Exception as e:
+        print(f"❌ Error en /ids_with_events: {e}")
+        raise HTTPException(status_code=500, detail=f"Error interno: {e}")
+
 @app.get("/group_heatmap")
 def group_heatmap():
     try:

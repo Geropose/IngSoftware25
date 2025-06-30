@@ -419,7 +419,7 @@ with st.sidebar:
     st.subheader("Algoritmo de Tracking")
     algoritmo_tracking = st.radio(
         "Selecciona el algoritmo de tracking:",
-        ["ByteTrack", "DeepSORT", "BotSort"],
+        ["ByteTrack", "BotSort"],
         help=(
         "¿Qué opción elegir según tu computadora?\n"
         " No fuerza CPU ni GPU, detecta automáticamente el mejor dispositivo. \n"
@@ -427,8 +427,6 @@ with st.sidebar:
         "o si querés que el video se procese lo más rápido posible. Es ideal para la mayoría de los casos.\n"
         "- BoT-SORT (más preciso): Usá esta opción si tu computadora tiene una buena GPU y necesitás mayor precisión "
         "para seguir personas en lugares con mucha gente o movimiento.\n"
-        "- DeepSORT (intermedio): Es una opción más antigua. Tarda más y en algunos casos suele funcionar relativamente mejor, "
-        "pero no se recomienda."
     )    
     )
 
