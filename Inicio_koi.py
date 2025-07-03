@@ -10,24 +10,35 @@ import cv2
 import platform
 import re
 import json
+import os
+os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
 
 def get_available_cameras():
     """Detecta las cámaras disponibles en el sistema"""
     available_cameras = []
     system = platform.system()
+    max_cameras = 2  # Reducir el número máximo de cámaras a probar
     
-    for i in range(10):
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            name = f"Cámara {i}"
-            
-            if system == "Windows":
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                name = f"Cámara {i} ({width}x{height})"
-            
-            available_cameras.append({"id": str(i), "name": name})
-            cap.release()
+#    for i in range(max_cameras):
+    while(True):
+        try:
+            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW if system == "Windows" else 0)
+            if cap.isOpened():
+                # Intenta leer un frame para verificar si la cámara es funcional
+                ret, _ = cap.read()
+                if ret:
+                    name = f"Cámara {i}"
+                    if system == "Windows":
+                        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        name = f"Cámara {i} ({width}x{height})"
+                    available_cameras.append({"id": str(i), "name": name})
+                cap.release()
+        except Exception as e:
+            break
+        finally:
+            if 'cap' in locals() and cap.isOpened():
+                cap.release()
     
     if system == "Windows" and not available_cameras:
         try:
@@ -109,26 +120,32 @@ def get_stream_url(video_url):
         st.error(f"Error al obtener stream: {e}")
         return None
 
-def format_trajectory_events(events_data):
-    """Formatea los eventos de trayectoria en el formato solicitado"""
-    if not events_data or "eventos" not in events_data:
-        return "No hay eventos de cambio de dirección disponibles"
+# En Inicio_koi.py, reemplazar format_trajectory_events con:
+def format_direction_events(events_data):
+    if not events_data or "events" not in events_data:
+        return "No hay eventos disponibles"
         
     id_num = events_data.get("id", "?")
-    eventos = events_data.get("eventos", [])
+    eventos = events_data.get("events", [])
     
     if not eventos:
-        return f"ID {id_num}: No hay cambios de dirección registrados"
+        return f"ID {id_num}: Sin eventos registrados"
     
-    formatted_text = f"🔄 **Eventos de Cambio de Dirección - ID {id_num}**\n\n"
+    text = f"🔄 **Eventos de Cambio - ID {id_num}**\n\n"
+    text += f"**Total eventos:** {len(eventos)}\n\n"
     
-    for i, evento in enumerate(eventos, 1):
-        formatted_text += f"**Evento {i}:**\n"
-        formatted_text += f"• Frame {evento['frame']}: cambió su dirección de **{evento['direccion_anterior']}** hacia **{evento['direccion_nueva']}**\n"
-        formatted_text += f"• Distancia recorrida: {evento['distancia']} píxeles\n"
-        formatted_text += f"• Posición: ({evento['posicion_x']}, {evento['posicion_y']})\n\n"
+    for i, ev in enumerate(eventos, 1):
+        text += f"**Evento {i}:**\n"
+        text += f"• {ev.get('description', '')}\n"
+        text += f"• Frame: {ev.get('frame', 'N/A')}\n"
+        if 'position' in ev:
+            text += f"• Posición: ({ev['position'].get('x', 0)}, {ev['position'].get('y', 0)})\n"
+        if 'angles' in ev:
+            ang = ev['angles']
+            text += f"• Ángulo: {ang.get('previous', 0)}° → {ang.get('current', 0)}° (Δ {ang.get('change', 0)}°)\n"
+        text += "\n"
         
-    return formatted_text
+    return text
 
 def format_direction_events_new(events_data):
     """Formatea los eventos de dirección con la nueva estructura de datos"""
@@ -327,6 +344,35 @@ with tab2:
         except Exception as e:
             st.warning(f"⚠️ Abriendo en navegador...")
             webbrowser.open_new_tab("http://localhost:8001/heatmap")
+#--------------------------------------------------------------------------------------------------------
+    if st.button("👥 Ver grupos detectados cam"):
+        try:
+            response = requests.get("http://localhost:8001/groups?max_distancia=100&min_frames=10", timeout=15)
+            if response.status_code == 200:
+                st.image(response.content, caption="Mapa de Grupos Online", use_container_width=True)
+            else:
+                webbrowser.open_new_tab("http://localhost:8001/groups")
+        except Exception as e:
+            st.warning("⚠️ Abriendo en navegador...")
+            webbrowser.open_new_tab("http://localhost:8001/groups")
+
+    if st.button("👥 Ver IDs pertenecientes a cada grupo cam"):
+        try:
+            response = requests.get("http://localhost:8001/groups?raw=true", timeout=10)
+            if response.status_code == 200:
+                grupos = response.json().get("grupos", [])
+                if grupos:
+                    st.markdown("### 🧑‍🤝‍🧑 Grupos detectados:")
+                    for i, grupo in enumerate(grupos, 1):
+                        st.markdown(f"**Grupo {i}:** {', '.join(map(str, grupo))}")
+                else:
+                    st.info("No se detectaron grupos.")
+            else:
+                st.warning("No se pudo obtener la información de grupos.")
+        except Exception as e:
+            st.error(f"Error al consultar grupos: {e}")
+
+#--------------------------------------------------------------------------------------------------------
 
     if st.button("🛣️ Trayectorias CAM"):
         try:
@@ -349,10 +395,8 @@ with tab2:
             response = requests.get(f"http://localhost:8001/heatmap/{int(id_persona_cam)}", timeout=15)
             if response.status_code == 200:
                 st.image(response.content, caption=f"Análisis ID {id_persona_cam} (CAM)", use_container_width=True)
-            elif response.status_code == 404:
-                st.warning(f"⚠️ No hay datos para ID {id_persona_cam}")
             else:
-                st.error(f"❌ Error al obtener datos: {response.status_code}")
+                st.error(f"⚠️ No hay datos para ID {id_persona_cam}")
                 
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
@@ -396,7 +440,7 @@ with tab2:
         
         if st.button("Ver eventos de direcciones del ID", key="direction_events_cam"):
             try:
-                response = requests.get(f"http://localhost:8001/direction_events/{cam_id_for_events}", timeout=15)
+                response = requests.get(f"http://localhost:8001/trajectory_events/{cam_id_for_events}", timeout=15)
                 
                 if response.status_code == 200:
                     events_data = response.json()
@@ -416,15 +460,13 @@ with tab2:
         # Fallback al método anterior si no hay endpoint nuevo
         cam_id_for_events = st.number_input("Registro de cambio de dirección por ID", min_value=0, step=1, value=0, key="cam_events_id")
 
+        # En la sección CAMARA, buscar el botón y reemplazar:
         if st.button(" Ver Eventos de Dirección CAM", key="trajectory_events_cam"):
             try:
                 response = requests.get(f"http://localhost:8001/trajectory_events/{cam_id_for_events}", timeout=15)
-                
                 if response.status_code == 200:
                     events_data = response.json()
-                    st.success(f"✅ ID {cam_id_for_events}: {events_data.get('total_eventos', 0)} eventos de cambio de dirección")
-                    
-                    formatted_events = format_trajectory_events(events_data)
+                    formatted_events = format_direction_events(events_data)  # Usar nueva función
                     st.markdown(formatted_events)
                     
                 elif response.status_code == 404:
@@ -480,8 +522,7 @@ with tab3:
         }
         tracker_option = tracker_mapping[tracker_display]
         fps_live = st.slider("⏱️ FPS:", min_value=1, max_value=30, value=20, step=1, key="online_fps_slider")
-        video_url = st.text_input("📥 Pegá aquí el link del live de YOUTUBE:")
-
+        
         # NUEVA SECCIÓN: Parámetros de detección de cambios de dirección para Online
         st.markdown(" Configuración de Detección de Cambios de Dirección (Online)")
 
@@ -498,6 +539,8 @@ with tab3:
             key="online_min_distancia",
             help="Distancia mínima entre puntos para calcular dirección"
         )
+        video_url = st.text_input("📥 Pegá aquí el link del live de YOUTUBE:")
+
 
     if video_url:
         if 'stream_link' not in st.session_state or st.session_state.get('last_url') != video_url:
